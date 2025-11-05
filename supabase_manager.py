@@ -8,7 +8,6 @@ from supabase import create_client, Client
 from datetime import datetime
 import pandas as pd
 from typing import Optional, List, Dict
-import os
 
 class SupabaseManager:
     """Gestisce connessione e operazioni Supabase"""
