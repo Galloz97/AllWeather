@@ -1,8 +1,9 @@
-streamlit==1.28.1
-pandas==2.0.3
-numpy==1.24.3
-plotly==5.17.0
-yfinance==0.2.32
-scipy==1.11.2
-supabase==2.0.1
-python-gotrue==3.3.3
+streamlit>=1.28.0
+pandas>=2.1.0
+numpy>=1.25.0
+plotly>=5.18.0
+yfinance>=0.2.38
+scipy>=1.11.0
+supabase>=2.0.1
+python-dotenv>=1.0.0
+
