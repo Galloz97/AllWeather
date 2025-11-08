@@ -490,8 +490,8 @@ def page_storico_transazioni():
     with col2:
         ticker_filter = st.text_input("Filtra per Ticker (vuoto = tutti)", "", key="ticker_filter")
     
-   with col3:
-    tipo_filter = st.selectbox("Filtra per Tipo", 
+    with col3:
+        tipo_filter = st.selectbox("Filtra per Tipo", 
                                ["Tutti", "Buy", "Sell", "Dividend", "Deposit", "Withdrawal", "Tax"], 
                                key="tipo_filter")
 
