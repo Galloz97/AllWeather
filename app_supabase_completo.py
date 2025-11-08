@@ -1293,7 +1293,8 @@ def page_simulazione_fire():
     if st.button("🎲 Calcola CAGR con Monte Carlo", type="primary"):
         with st.spinner(f"Esecuzione {mc_iterations:,} simulazioni..."):
             try:
-                simulations, _ = monte_carlo_simulation(
+                # IMPORTANTE: Nessun versamento per calcolare il CAGR puro del portafoglio
+                simulations, total_contributed = monte_carlo_simulation(
                     df_analysis,
                     n_simulations=mc_iterations,
                     days=mc_years * 252,
@@ -1305,19 +1306,41 @@ def page_simulazione_fire():
                     final_values = simulations[:, -1]
                     initial_value = metrics['valore_totale']
                     
-                    # Calcola CAGR per ogni percentile
+                    # Percentili
                     p50_final = np.percentile(final_values, 50)
                     p75_final = np.percentile(final_values, 75)
                     p90_final = np.percentile(final_values, 90)
                     
-                    cagr_50 = ((p50_final / initial_value) ** (1 / mc_years) - 1) * 100
-                    cagr_75 = ((p75_final / initial_value) ** (1 / mc_years) - 1) * 100
-                    cagr_90 = ((p90_final / initial_value) ** (1 / mc_years) - 1) * 100
+                    # CORRETTO: Usa la stessa funzione di Analisi
+                    def calculate_cagr_corrected(final_val, initial_val, contributions, years):
+                        """
+                        CAGR corretto: considera solo la crescita dell'investimento
+                        """
+                        if initial_val > 0 and contributions == 0:
+                            # Senza versamenti: formula standard
+                            return ((final_val / initial_val) ** (1 / years) - 1) * 100
+                        elif initial_val > 0:
+                            # Con versamenti: sottrai i versamenti dalla crescita
+                            growth = final_val - contributions
+                            return ((growth / initial_val) ** (1 / years) - 1) * 100
+                        return 0
+                    
+                    # Calcola CAGR (senza versamenti quindi contributions = 0)
+                    cagr_50 = calculate_cagr_corrected(p50_final, initial_value, 0, mc_years)
+                    cagr_75 = calculate_cagr_corrected(p75_final, initial_value, 0, mc_years)
+                    cagr_90 = calculate_cagr_corrected(p90_final, initial_value, 0, mc_years)
                     
                     # Salva in session state
                     st.session_state['fire_cagr_50'] = cagr_50
                     st.session_state['fire_cagr_75'] = cagr_75
                     st.session_state['fire_cagr_90'] = cagr_90
+                    st.session_state['fire_mc_results'] = {
+                        'initial': initial_value,
+                        'p50': p50_final,
+                        'p75': p75_final,
+                        'p90': p90_final,
+                        'years': mc_years
+                    }
                     
                     col1, col2, col3 = st.columns(3)
                     
@@ -1325,12 +1348,24 @@ def page_simulazione_fire():
                         st.metric("CAGR Mediano (50°)", f"{cagr_50:.2f}%")
                     with col2:
                         st.metric("🎯 CAGR Conservativo (75°)", f"{cagr_75:.2f}%", 
-                                 help="Questo sarà usato per FIRE")
+                                help="Questo sarà usato per FIRE")
                     with col3:
                         st.metric("CAGR Ottimistico (90°)", f"{cagr_90:.2f}%")
                     
                     st.success(f"✅ CAGR del 75° percentile ({cagr_75:.2f}%) sarà usato per la simulazione FIRE")
-                
+                    
+                    # Mostra dettagli calcolo
+                    with st.expander("🔍 Dettagli Calcolo CAGR"):
+                        st.write(f"**Formula usata:** CAGR = ((Valore Finale / Valore Iniziale)^(1/Anni)) - 1")
+                        st.write(f"")
+                        st.write(f"**75° Percentile:**")
+                        st.write(f"• Valore iniziale: €{initial_value:,.0f}")
+                        st.write(f"• Valore finale (75°): €{p75_final:,.0f}")
+                        st.write(f"• Anni: {mc_years}")
+                        st.write(f"• CAGR: (€{p75_final:,.0f} / €{initial_value:,.0f})^(1/{mc_years}) - 1 = {cagr_75:.2f}%")
+                        st.write(f"")
+                        st.write(f"**Crescita totale:** {((p75_final / initial_value - 1) * 100):.1f}%")
+
             except Exception as e:
                 st.error(f"Errore Monte Carlo: {e}")
     
