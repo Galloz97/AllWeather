@@ -926,54 +926,86 @@ def page_analisi_portafoglio():
         else:
             st.info("Dati insufficienti per calcolare Relaxed Risk Parity")
     
-    st.divider()
+        st.divider()
     
     # Simulazione Monte Carlo
-    st.subheader("🎲 Simulazione Monte Carlo (1000 iterazioni, 12 mesi)")
+    st.subheader("🎲 Simulazione Monte Carlo")
     st.info("📊 La simulazione usa i **pesi attuali del portafoglio** (non Risk Parity)")
     
-    if st.button("Esegui Simulazione"):
-        with st.spinner("Esecuzione simulazione..."):
+    # Controlli simulazione
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        n_years = st.slider(
+            "Orizzonte temporale (anni)",
+            min_value=1,
+            max_value=50,
+            value=30,
+            step=1,
+            help="Seleziona per quanti anni simulare il portafoglio"
+        )
+    
+    with col2:
+        n_simulations = st.select_slider(
+            "Numero di iterazioni",
+            options=[100, 500, 1000, 2500, 5000, 10000],
+            value=5000,
+            help="Più iterazioni = risultati più accurati ma tempo di calcolo maggiore"
+        )
+    
+    days = n_years * 252  # 252 giorni di trading per anno
+    
+    st.write(f"**Configurazione:** {n_simulations:,} simulazioni su **{n_years} anni** ({days} giorni di trading)")
+    
+    if st.button("🚀 Esegui Simulazione", type="primary"):
+        with st.spinner(f"Esecuzione {n_simulations:,} simulazioni su {n_years} anni..."):
             try:
-                # Usa df_analysis con pesi attuali (no risk parity)
-                simulations = monte_carlo_simulation(df_analysis, n_simulations=1000, days=252)
+                # Usa df_analysis con pesi attuali
+                simulations = monte_carlo_simulation(df_analysis, n_simulations=n_simulations, days=days)
                 
                 if simulations.size > 0:
-                    # Calcola solo i percentili richiesti: 50°, 75°, 90°
+                    # Calcola percentili
                     percentili = np.percentile(simulations, [50, 75, 90], axis=0)
+                    
+                    # Converti giorni in anni per l'asse X
+                    x_axis = np.arange(days) / 252
                     
                     # Grafico
                     fig = go.Figure()
                     
                     # 50° percentile (Mediana)
                     fig.add_trace(go.Scatter(
+                        x=x_axis,
                         y=percentili[0],
                         name='Mediana (50°)',
                         mode='lines',
                         line=dict(color='blue', width=3),
-                        hovertemplate='Giorno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
+                        hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
                     ))
                     
                     # 75° percentile
                     fig.add_trace(go.Scatter(
+                        x=x_axis,
                         y=percentili[1],
                         name='75° Percentile',
                         mode='lines',
                         line=dict(color='green', width=2),
-                        hovertemplate='Giorno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
+                        hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
                     ))
                     
                     # 90° percentile
                     fig.add_trace(go.Scatter(
+                        x=x_axis,
                         y=percentili[2],
                         name='90° Percentile',
                         mode='lines',
                         line=dict(color='darkgreen', width=2),
-                        hovertemplate='Giorno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
+                        hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
                     ))
                     
                     # Area tra 50° e 90°
                     fig.add_trace(go.Scatter(
+                        x=x_axis,
                         y=percentili[2],
                         fill=None,
                         mode='lines',
@@ -983,6 +1015,7 @@ def page_analisi_portafoglio():
                     ))
                     
                     fig.add_trace(go.Scatter(
+                        x=x_axis,
                         y=percentili[0],
                         fill='tonexty',
                         mode='lines',
@@ -993,8 +1026,8 @@ def page_analisi_portafoglio():
                     ))
                     
                     fig.update_layout(
-                        title="Simulazione Monte Carlo - Valore Portafoglio (12 mesi)<br><sub>Basata sui pesi attuali del portafoglio</sub>",
-                        xaxis_title="Giorni di Trading",
+                        title=f"Simulazione Monte Carlo - Proiezione {n_years} anni<br><sub>Basata su {n_simulations:,} simulazioni con pesi attuali</sub>",
+                        xaxis_title="Anni",
                         yaxis_title="Valore Portafoglio (€)",
                         hovermode='x unified',
                         height=500,
@@ -1005,34 +1038,91 @@ def page_analisi_portafoglio():
                     
                     # Statistiche finali
                     final_values = simulations[:, -1]
+                    initial_value = metrics['valore_totale']
+                    
+                    st.subheader(f"📊 Risultati dopo {n_years} anni")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        st.metric("💰 Valore Iniziale", format_currency(metrics['valore_totale']))
+                        st.metric("💰 Valore Iniziale", format_currency(initial_value))
                     with col2:
-                        st.metric("📊 Mediana (50°)", format_currency(np.percentile(final_values, 50)))
+                        median_final = np.percentile(final_values, 50)
+                        median_return = (median_final - initial_value) / initial_value * 100
+                        st.metric(
+                            "📊 Mediana (50°)", 
+                            format_currency(median_final),
+                            f"{median_return:+.1f}%"
+                        )
                     with col3:
-                        st.metric("📈 75° Percentile", format_currency(np.percentile(final_values, 75)))
+                        p75_final = np.percentile(final_values, 75)
+                        p75_return = (p75_final - initial_value) / initial_value * 100
+                        st.metric(
+                            "📈 75° Percentile", 
+                            format_currency(p75_final),
+                            f"{p75_return:+.1f}%"
+                        )
                     with col4:
-                        st.metric("🚀 90° Percentile", format_currency(np.percentile(final_values, 90)))
+                        p90_final = np.percentile(final_values, 90)
+                        p90_return = (p90_final - initial_value) / initial_value * 100
+                        st.metric(
+                            "🚀 90° Percentile", 
+                            format_currency(p90_final),
+                            f"{p90_return:+.1f}%"
+                        )
                     
                     st.divider()
                     
-                    # Statistiche aggiuntive
+                    # Rendimenti annualizzati
+                    st.subheader("📈 Rendimenti Annualizzati (CAGR)")
+                    
                     col1, col2, col3 = st.columns(3)
                     
-                    initial = metrics['valore_totale']
-                    median_return = (np.percentile(final_values, 50) - initial) / initial * 100
-                    p75_return = (np.percentile(final_values, 75) - initial) / initial * 100
-                    p90_return = (np.percentile(final_values, 90) - initial) / initial * 100
+                    def calculate_cagr(final_val, initial_val, years):
+                        return ((final_val / initial_val) ** (1 / years) - 1) * 100
                     
                     with col1:
-                        st.metric("📉 Rendimento Mediano", f"{median_return:.2f}%")
+                        cagr_50 = calculate_cagr(median_final, initial_value, n_years)
+                        st.metric("CAGR Mediano", f"{cagr_50:.2f}% /anno")
                     with col2:
-                        st.metric("📈 Rendimento 75°", f"{p75_return:.2f}%")
+                        cagr_75 = calculate_cagr(p75_final, initial_value, n_years)
+                        st.metric("CAGR 75°", f"{cagr_75:.2f}% /anno")
                     with col3:
-                        st.metric("🚀 Rendimento 90°", f"{p90_return:.2f}%")
+                        cagr_90 = calculate_cagr(p90_final, initial_value, n_years)
+                        st.metric("CAGR 90°", f"{cagr_90:.2f}% /anno")
+                    
+                    # Distribuzione valori finali
+                    st.divider()
+                    st.subheader("📊 Distribuzione Valori Finali")
+                    
+                    fig_dist = go.Figure()
+                    fig_dist.add_trace(go.Histogram(
+                        x=final_values,
+                        nbinsx=50,
+                        name='Distribuzione',
+                        marker_color='lightblue',
+                        hovertemplate='Valore: €%{x:,.0f}<br>Frequenza: %{y}<extra></extra>'
+                    ))
+                    
+                    # Aggiungi linee per i percentili
+                    for pct, name, color in [(50, 'Mediana', 'blue'), (75, '75°', 'green'), (90, '90°', 'darkgreen')]:
+                        val = np.percentile(final_values, pct)
+                        fig_dist.add_vline(
+                            x=val,
+                            line_dash="dash",
+                            line_color=color,
+                            annotation_text=f"{name}: €{val:,.0f}",
+                            annotation_position="top"
+                        )
+                    
+                    fig_dist.update_layout(
+                        title=f"Distribuzione dei Valori Finali dopo {n_years} anni",
+                        xaxis_title="Valore Portafoglio (€)",
+                        yaxis_title="Frequenza",
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_dist, use_container_width=True)
                     
                 else:
                     st.error("Errore: simulazione non ha prodotto risultati")
@@ -1040,6 +1130,7 @@ def page_analisi_portafoglio():
             except Exception as e:
                 st.error(f"Errore durante la simulazione: {e}")
                 st.info("Verifica che tutti i ticker abbiano dati storici disponibili su Yahoo Finance")
+
 
 
 
