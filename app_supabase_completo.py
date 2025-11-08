@@ -1005,7 +1005,7 @@ def page_analisi_portafoglio():
         n_simulations = st.select_slider(
             "Numero di iterazioni",
             options=[100, 500, 1000, 2500, 5000, 10000],
-            value=5000,
+            value=2000,
             help="Più iterazioni = risultati più accurati"
         )
     
