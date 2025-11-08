@@ -1797,7 +1797,6 @@ def page_configurazione():
         )
     
     # NUOVO: Parametri Leva Finanziaria
-    st.divider()
     st.subheader("📈 Parametri Leva Finanziaria")
     
     col1, col2 = st.columns(2)
