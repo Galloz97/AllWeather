@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import yfinance as yf
+from csv_importer import process_csv, TICKER_MAPPING
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -821,6 +822,47 @@ def page_simulazione_fire():
     
     st.dataframe(display_fire, use_container_width=True)
 
+# ==================== PAGINA IMPORTA TRANSAZIONI CSV============
+
+def page_import_csv():
+    """Pagina per importare transazioni da CSV"""
+    st.title("📤 Importa Transazioni da CSV")
+    
+    if "user" not in st.session_state:
+        st.warning("⚠️ Devi essere loggato per importare.")
+        return
+    
+    user_id = st.session_state.user.id
+    st.info(f"👤 Importerai le transazioni per: {st.session_state.user.email}")
+    
+    st.divider()
+    
+    uploaded_file = st.file_uploader("Carica il CSV", type="csv")
+    
+    if uploaded_file is not None:
+        df_preview = pd.read_csv(uploaded_file)
+        st.dataframe(df_preview.head(10))
+        
+        st.divider()
+        
+        if st.button("📥 Importa su Supabase", type="primary"):
+            temp_path = "/tmp/transazioni_import.csv"
+            uploaded_file.seek(0)
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            with st.spinner("Importazione..."):
+                result = process_csv(temp_path, user_id, supabase)
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("✓ Importate", result['importate'])
+            col2.metric("✗ Errori", result['errori'])
+            col3.metric("⚠️ Non mappate", result['non_mappate'])
+            
+            if result['importate'] > 0:
+                st.success(f"✅ {result['importate']} transazioni importate!")
+
+
 # ==================== PAGINA CONFIGURAZIONE ====================
 
 def page_configurazione():
@@ -934,6 +976,7 @@ def main():
         "📋 Storico": page_storico_transazioni,
         "🔍 Analisi": page_analisi_portafoglio,
         "🔥 FIRE": page_simulazione_fire,
+        "📤 Importa CSV": page_import_csv,
         "⚙️ Configurazione": page_configurazione,
     }
     
