@@ -1289,9 +1289,7 @@ def page_simulazione_fire():
     st.info("💡 **FIRE Calculator**: Valori di default dalla Configurazione")
     
     # LEGGI e VALIDA parametri dalla configurazione
-    tasso_risk_free = safe_float(supabase.get_config(user_id, "tasso_risk_free", "0.025"), "0.025", 0.0, 0.2)
     inflazione_decimal = safe_float(supabase.get_config(user_id, "inflazione", "0.02"), "0.02", 0.0, 0.2)
-    orizzonte_temporale = safe_int(supabase.get_config(user_id, "orizzonte_temporale", "30"), "30", 1, 50)
     versamento_mensile_default = safe_float(supabase.get_config(user_id, "versamento_mensile", "500"), "500", 0, 50000)
     
     # Parametri FIRE
