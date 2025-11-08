@@ -1345,11 +1345,11 @@ def page_simulazione_fire():
         
         accumulation_data = []
         
-        if years_to_fire is None or not isinstance(years_to_fire, int):
-            eta_fire = "non raggiunta"
-        else:
+        if isinstance(years_to_fire, int) and years_to_fire is not None:
             eta_fire = fire_age + years_to_fire
-
+        else:
+            eta_fire = "non raggiunta"
+        
         st.metric("🎂 Età al FIRE", f"{eta_fire} anni")
 
 
