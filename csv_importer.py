@@ -66,7 +66,8 @@ def get_ticker_mapping(ticker_bit):
     return TICKER_MAPPING.get(ticker_bit, None)
 
 def process_csv(csv_file_path, user_id: str, supabase_client: Client):
-    """Processa il CSV e importa le transazioni su Supabase (cash compreso)"""
+    """Processa il CSV e importa le transazioni su Supabase, mostra errori dettagliati"""
+    import traceback
     df = pd.read_csv(csv_file_path, sep=",")
     df.columns = [col.strip().lower() for col in df.columns]
     column_map = {
@@ -98,9 +99,12 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     def parse_date(x):
         try:
             return pd.to_datetime(str(x), format="%d/%m/%Y").strftime("%Y-%m-%d")
-        except:
+        except Exception as err:
+            print(f"Errore data: '{x}' -- {err}")
             return None
 
+    # LOG delle prime 5 richieste fallite
+    max_log = 5
     for idx, row in df.iterrows():
         tipo = str(row.get("tipo", "")).strip()
         data = parse_date(row.get("data", ""))
@@ -133,9 +137,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             prezzo_finale = 1.0
             importo_finale = quantita_finale
             note = "Imposta/Tassa"
-        # Movimenti titoli
         elif tipo in ["Buy", "Sell"]:
-            # Ticker mapping
             if isinstance(ticker, str) and ticker.startswith("BIT:"):
                 ticker_finale = ticker.replace("BIT:", "") + ".MI"
             elif ticker and not ticker.upper() in ["EURO", ""]:
@@ -170,7 +172,16 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             }).execute()
             transazioni_importate += 1
         except Exception as e:
-            errori.append(f"Errore riga {idx}: {str(e)}")
+            err_str = f"Errore riga {idx}: richiesta={{{'user_id': user_id, 'data': data, 'ticker': ticker_finale, 'tipo': tipo_finale, 'quantita': quantita_finale, 'prezzo_unitario': prezzo_finale, 'importo': importo_finale, 'commissioni': commissioni, 'note': note}}}\nSupabaseErrore: {e}\n{traceback.format_exc()}"
+            errori.append(err_str)
+            if len(errori) <= max_log:
+                print(err_str)
+
+    # Log anche come file per il debug
+    if errori:
+        with open('/tmp/import_error_debug.txt', 'w') as f:
+            for e in errori[:10]:
+                f.write(e + "\n----------------\n")
 
     return {
         'importate': transazioni_importate,
