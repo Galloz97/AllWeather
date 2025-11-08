@@ -157,17 +157,26 @@ def process_csv(csv_file_path, user_id: str, supabase_client):
             
         elif tipo in ["Buy", "Sell"]:
             if isinstance(ticker, str) and ticker.startswith("BIT:"):
-                # Prima controlla se c'è un mapping esplicito
+                # Controlla mapping esplicito
                 if ticker in TICKER_MAPPING:
                     ticker_finale = TICKER_MAPPING[ticker]
                 else:
-                    # Altrimenti converti automaticamente
-                    # Rimuovi "BIT:" e suffissi come "-ETFP", "-ETF", etc.
+                    # Fallback: converti automaticamente rimuovendo suffissi
                     ticker_clean = ticker.replace("BIT:", "")
-                    # Rimuovi suffissi comuni
-                    for suffix in ["-ETFP", "-ETF", "-UCITS"]:
-                        ticker_clean = ticker_clean.replace(suffix, "")
+                    
+                    # Rimuovi suffissi comuni (in ordine di priorità)
+                    suffixes_to_remove = ["-ETFP", "-ETF", "-UCITS", "-ACC", "-DIS"]
+                    for suffix in suffixes_to_remove:
+                        if suffix in ticker_clean:
+                            ticker_clean = ticker_clean.replace(suffix, "")
+                            break  # Rimuovi solo il primo match
+                    
                     ticker_finale = ticker_clean + ".MI"
+                    
+                    # Log per debug
+                    if ticker != f"BIT:{ticker_clean}":
+                        print(f"⚠️ Ticker convertito automaticamente: {ticker} → {ticker_finale}")
+
             else:
                 non_mappate += 1
                 continue
