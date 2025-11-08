@@ -739,7 +739,7 @@ def page_analisi_portafoglio():
     
     col1, col2, col3, col4 = st.columns(4)
     
-   with col1:
+    with col1:
        # Calcola volatilità solo per asset reali (non liquidità)
        volatilities = []
        for ticker in df_analysis['Ticker']:
@@ -751,12 +751,12 @@ def page_analisi_portafoglio():
            except Exception as e:
                print(f"Errore calcolo volatilità per {ticker}: {e}")
                continue
-    
-    if volatilities:
-        avg_vol = np.mean(volatilities)
-        st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
-    else:
-        st.metric("Volatilità Annualizzata", "N/A")
+        
+        if volatilities:
+            avg_vol = np.mean(volatilities)
+            st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
+        else:
+            st.metric("Volatilità Annualizzata", "N/A")
 
         
         if volatilities:
