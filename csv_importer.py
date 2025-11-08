@@ -157,9 +157,17 @@ def process_csv(csv_file_path, user_id: str, supabase_client):
             
         elif tipo in ["Buy", "Sell"]:
             if isinstance(ticker, str) and ticker.startswith("BIT:"):
-                ticker_finale = ticker.replace("BIT:", "") + ".MI"
-            elif ticker and ticker.upper() not in ["EURO", "NAN", ""]:
-                ticker_finale = ticker
+                # Prima controlla se c'è un mapping esplicito
+                if ticker in TICKER_MAPPING:
+                    ticker_finale = TICKER_MAPPING[ticker]
+                else:
+                    # Altrimenti converti automaticamente
+                    # Rimuovi "BIT:" e suffissi come "-ETFP", "-ETF", etc.
+                    ticker_clean = ticker.replace("BIT:", "")
+                    # Rimuovi suffissi comuni
+                    for suffix in ["-ETFP", "-ETF", "-UCITS"]:
+                        ticker_clean = ticker_clean.replace(suffix, "")
+                    ticker_finale = ticker_clean + ".MI"
             else:
                 non_mappate += 1
                 continue
