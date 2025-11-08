@@ -1252,196 +1252,324 @@ def page_analisi_portafoglio():
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
 def page_simulazione_fire():
-    """Pagina Simulazione FIRE"""
-    st.title("🔥 Simulazione FIRE (Financial Independence Retire Early)")
+    """Pagina Simulazione FIRE con CAGR da Monte Carlo"""
+    st.title("🔥 Simulazione FIRE (Financial Independence, Retire Early)")
     
-    # Parametri da configurazione
-    tasso_prelievo = float(supabase.get_config(user_id, "tasso_prelievo_fire", "0.04"))
-    inflazione = float(supabase.get_config(user_id, "tasso_inflazione", "0.02"))
+    metrics, df = get_portfolio_metrics()
     
-    st.subheader("📋 Parametri di Simulazione")
+    if metrics is None:
+        st.info("📭 Nessun dato portafoglio per simulazione FIRE")
+        return
+    
+    # Escludi liquidità
+    df_analysis = df[df['Ticker'] != 'LIQUIDITA'].copy()
+    
+    st.info("💡 **FIRE Calculator**: Calcola quando raggiungerai l'indipendenza finanziaria usando il CAGR della simulazione Monte Carlo")
+    
+    # Sezione 1: Calcola CAGR da Monte Carlo
+    st.subheader("📊 Step 1: Calcola CAGR Realistico")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        mc_years = st.slider(
+            "Orizzonte Monte Carlo (anni)",
+            min_value=10,
+            max_value=30,
+            value=20,
+            help="Anni di simulazione per calcolare il CAGR"
+        )
+    
+    with col2:
+        mc_iterations = st.select_slider(
+            "Iterazioni Monte Carlo",
+            options=[1000, 2500, 5000],
+            value=2500,
+            help="Numero di simulazioni"
+        )
+    
+    cagr_75 = None
+    
+    if st.button("🎲 Calcola CAGR con Monte Carlo", type="primary"):
+        with st.spinner(f"Esecuzione {mc_iterations:,} simulazioni..."):
+            try:
+                simulations, _ = monte_carlo_simulation(
+                    df_analysis,
+                    n_simulations=mc_iterations,
+                    days=mc_years * 252,
+                    monthly_contribution=0,
+                    annual_contribution=0
+                )
+                
+                if simulations.size > 0:
+                    final_values = simulations[:, -1]
+                    initial_value = metrics['valore_totale']
+                    
+                    # Calcola CAGR per ogni percentile
+                    p50_final = np.percentile(final_values, 50)
+                    p75_final = np.percentile(final_values, 75)
+                    p90_final = np.percentile(final_values, 90)
+                    
+                    cagr_50 = ((p50_final / initial_value) ** (1 / mc_years) - 1) * 100
+                    cagr_75 = ((p75_final / initial_value) ** (1 / mc_years) - 1) * 100
+                    cagr_90 = ((p90_final / initial_value) ** (1 / mc_years) - 1) * 100
+                    
+                    # Salva in session state
+                    st.session_state['fire_cagr_50'] = cagr_50
+                    st.session_state['fire_cagr_75'] = cagr_75
+                    st.session_state['fire_cagr_90'] = cagr_90
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("CAGR Mediano (50°)", f"{cagr_50:.2f}%")
+                    with col2:
+                        st.metric("🎯 CAGR Conservativo (75°)", f"{cagr_75:.2f}%", 
+                                 help="Questo sarà usato per FIRE")
+                    with col3:
+                        st.metric("CAGR Ottimistico (90°)", f"{cagr_90:.2f}%")
+                    
+                    st.success(f"✅ CAGR del 75° percentile ({cagr_75:.2f}%) sarà usato per la simulazione FIRE")
+                
+            except Exception as e:
+                st.error(f"Errore Monte Carlo: {e}")
+    
+    st.divider()
+    
+    # Sezione 2: Parametri FIRE
+    st.subheader("💰 Step 2: Parametri FIRE")
+    
+    # Recupera CAGR da session state
+    if 'fire_cagr_75' in st.session_state:
+        default_cagr = st.session_state['fire_cagr_75']
+    else:
+        default_cagr = 6.0
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        obiettivo_fire = st.number_input(
-            "Obiettivo FIRE (€)",
-            min_value=10000,
-            value=500000,
-            step=10000,
-            key="fire_obiettivo"
-        )
+        current_value = metrics['valore_totale']
+        st.metric("💼 Portafoglio Attuale", format_currency(current_value))
     
     with col2:
-        spesa_annuale = st.number_input(
-            "Spesa Annuale Attuale (€)",
-            min_value=1000,
+        monthly_contribution = st.number_input(
+            "Versamento mensile (€)",
+            min_value=0,
+            max_value=50000,
+            value=500,
+            step=100
+        )
+    
+    with col3:
+        annual_expenses = st.number_input(
+            "Spese annue desiderate (€)",
+            min_value=0,
+            max_value=500000,
             value=30000,
             step=1000,
-            key="fire_spesa"
+            help="Quanto vuoi spendere all'anno una volta raggiunto FIRE"
         )
-    
-    with col3:
-        tasso_prelievo_input = st.slider(
-            "Tasso Prelievo Sostenibile (%)",
-            min_value=2.0,
-            max_value=5.0,
-            value=tasso_prelievo * 100,
-            step=0.1,
-            key="fire_prelievo"
-        ) / 100
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        pac_mensile = st.number_input(
-            "PAC Mensile (€)",
-            min_value=0,
-            value=500,
-            step=50,
-            key="fire_pac"
-        )
-    
-    with col2:
-        inflazione_input = st.slider(
-            "Inflazione Attesa (%)",
-            min_value=0.5,
-            max_value=5.0,
-            value=inflazione * 100,
+        cagr_accumulation = st.number_input(
+            "CAGR Accumulo (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=default_cagr,
             step=0.1,
-            key="fire_inflazione"
-        ) / 100
-    
-    with col3:
-        anni_obiettivo = st.number_input(
-            "Anni Obiettivo",
-            min_value=1,
-            value=20,
-            step=1,
-            key="fire_anni"
-        )
-    
-    st.divider()
-    
-    # Calcoli FIRE
-    st.subheader("📊 Analisi FIRE")
-    
-    obiettivo_finanziario = spesa_annuale / tasso_prelievo_input
-    spesa_futura = spesa_annuale * (1 + inflazione_input) ** anni_obiettivo
-    
-    metrics, _ = get_portfolio_metrics()
-    valore_attuale = metrics['valore_totale'] if metrics else 0
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            "Obiettivo Finanziario",
-            format_currency(obiettivo_finanziario),
-            f"Spesa / {tasso_prelievo_input*100:.1f}%"
+            help="Tasso di crescita durante fase accumulo (da Monte Carlo 75°)"
         )
     
     with col2:
-        st.metric(
-            f"Spesa fra {anni_obiettivo} anni",
-            format_currency(spesa_futura),
-            f"Inflazione: {inflazione_input*100:.1f}%"
+        cagr_withdrawal = st.number_input(
+            "CAGR Prelievi (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=max(0, default_cagr - 1.5),  # Più conservativo
+            step=0.1,
+            help="Tasso di crescita durante fase prelievi (conservativo)"
         )
     
     with col3:
-        st.metric(
-            "Portafoglio Attuale",
-            format_currency(valore_attuale)
+        withdrawal_rate = st.number_input(
+            "Tasso Prelievo Annuo (%)",
+            min_value=1.0,
+            max_value=10.0,
+            value=4.0,
+            step=0.5,
+            help="Regola del 4% = standard FIRE"
         )
     
-    st.divider()
-    
-    # Simulazione Scenari
-    st.subheader("📈 Traiettoria verso FIRE")
-    
-    def simulate_fire_path(val_init, pac, anni, rendimento):
-        """Simula crescita portafoglio verso FIRE"""
-        valori = [val_init]
-        for _ in range(anni):
-            val_prev = valori[-1]
-            val_new = val_prev * (1 + rendimento) + pac * 12
-            valori.append(val_new)
-        return valori
-    
-    # Scenari con diversi rendimenti
-    rendimento_pessimistico = -0.05
-    rendimento_base = 0.07
-    rendimento_ottimistico = 0.10
-    
-    anni_list = list(range(0, anni_obiettivo + 1))
-    
-    valori_pessimistico = simulate_fire_path(valore_attuale, pac_mensile, anni_obiettivo, rendimento_pessimistico)
-    valori_base = simulate_fire_path(valore_attuale, pac_mensile, anni_obiettivo, rendimento_base)
-    valori_ottimistico = simulate_fire_path(valore_attuale, pac_mensile, anni_obiettivo, rendimento_ottimistico)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=anni_list,
-        y=valori_pessimistico,
-        name='Pessimistico (-5%)',
-        line=dict(color='red', dash='dash'),
-        hovertemplate='Anno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=anni_list,
-        y=valori_base,
-        name='Base (7%)',
-        line=dict(color='blue'),
-        hovertemplate='Anno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=anni_list,
-        y=valori_ottimistico,
-        name='Ottimistico (+10%)',
-        line=dict(color='green', dash='dash'),
-        hovertemplate='Anno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
-    ))
-    
-    fig.add_hline(
-        y=obiettivo_finanziario,
-        line_dash="dot",
-        line_color="orange",
-        annotation_text="Target FIRE",
-        annotation_position="right"
-    )
-    
-    fig.update_layout(
-        title="Traiettoria verso FIRE",
-        xaxis_title="Anni",
-        yaxis_title="Valore Portafoglio (€)",
-        hovermode='x unified',
-        height=500
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    # Calcolo FIRE Number
+    fire_number = annual_expenses / (withdrawal_rate / 100)
     
     st.divider()
     
-    # Tabella Anno per Anno
-    st.subheader("📋 Dettaglio Anno per Anno (Scenario Base)")
+    # Sezione 3: Risultati
+    st.subheader("🎯 Step 3: Risultati Simulazione FIRE")
     
-    tabella_fire = pd.DataFrame({
-        'Anno': anni_list,
-        'PAC Cumulativo': [pac_mensile * 12 * anno for anno in anni_list],
-        'Valore Portafoglio': valori_base,
-        'Gap dall\'Obiettivo': [max(0, obiettivo_finanziario - v) for v in valori_base]
-    })
-    
-    # Formattazione
-    display_fire = tabella_fire.copy()
-    display_fire['PAC Cumulativo'] = display_fire['PAC Cumulativo'].apply(format_currency)
-    display_fire['Valore Portafoglio'] = display_fire['Valore Portafoglio'].apply(format_currency)
-    display_fire['Gap dall\'Obiettivo'] = display_fire['Gap dall\'Obiettivo'].apply(format_currency)
-    
-    st.dataframe(display_fire, use_container_width=True)
+    if st.button("🚀 Simula FIRE", type="primary"):
+        # Fase Accumulo
+        years_to_fire = 0
+        portfolio_value = current_value
+        monthly_rate = cagr_accumulation / 100 / 12
+        
+        accumulation_data = []
+        
+        # Simula fino a raggiungere FIRE Number
+        max_years = 50
+        for year in range(max_years):
+            for month in range(12):
+                portfolio_value = portfolio_value * (1 + monthly_rate) + monthly_contribution
+            
+            accumulation_data.append({
+                'year': year,
+                'value': portfolio_value
+            })
+            
+            if portfolio_value >= fire_number:
+                years_to_fire = year + 1
+                break
+        
+        if portfolio_value < fire_number:
+            st.warning(f"⚠️ Non raggiungi il FIRE Number in {max_years} anni. Aumenta i versamenti o riduci le spese.")
+            return
+        
+        # Fase Prelievi
+        withdrawal_data = []
+        fire_portfolio = portfolio_value
+        annual_withdrawal = annual_expenses
+        withdrawal_years = 40  # Simula 40 anni di prelievi
+        
+        for year in range(withdrawal_years):
+            # Prelievo annuale all'inizio dell'anno
+            fire_portfolio -= annual_withdrawal
+            
+            # Crescita del portafoglio
+            fire_portfolio *= (1 + cagr_withdrawal / 100)
+            
+            withdrawal_data.append({
+                'year': years_to_fire + year,
+                'value': max(0, fire_portfolio)
+            })
+            
+            if fire_portfolio <= 0:
+                st.warning(f"⚠️ Il portafoglio si esaurisce dopo {year} anni di prelievi")
+                break
+        
+        # Metriche Risultati
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("🎯 FIRE Number", format_currency(fire_number))
+        
+        with col2:
+            st.metric("⏱️ Anni per FIRE", f"{years_to_fire} anni")
+        
+        with col3:
+            fire_age = st.number_input("Età attuale", min_value=18, max_value=80, value=30)
+            st.metric("🎂 Età al FIRE", f"{fire_age + years_to_fire} anni")
+        
+        with col4:
+            total_contributed = monthly_contribution * 12 * years_to_fire
+            st.metric("💰 Totale Versato", format_currency(total_contributed))
+        
+        st.divider()
+        
+        # Grafico Completo: Accumulo + Prelievi
+        st.subheader("📈 Evoluzione Portafoglio: Accumulo → FIRE → Prelievi")
+        
+        # Combina dati
+        full_data = accumulation_data + withdrawal_data
+        
+        years = [d['year'] for d in full_data]
+        values = [d['value'] for d in full_data]
+        
+        fig = go.Figure()
+        
+        # Fase Accumulo
+        accumulation_years = [d['year'] for d in accumulation_data]
+        accumulation_values = [d['value'] for d in accumulation_data]
+        
+        fig.add_trace(go.Scatter(
+            x=accumulation_years,
+            y=accumulation_values,
+            name='Fase Accumulo',
+            mode='lines',
+            line=dict(color='blue', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(0, 0, 255, 0.1)',
+            hovertemplate='Anno: %{x}<br>Valore: €%{y:,.0f}<extra></extra>'
+        ))
+        
+        # Fase Prelievi
+        withdrawal_years = [d['year'] for d in withdrawal_data]
+        withdrawal_values = [d['value'] for d in withdrawal_data]
+        
+        fig.add_trace(go.Scatter(
+            x=withdrawal_years,
+            y=withdrawal_values,
+            name='Fase Prelievi',
+            mode='lines',
+            line=dict(color='green', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(0, 255, 0, 0.1)',
+            hovertemplate='Anno: %{x}<br>Valore: €%{y:,.0f}<extra></extra>'
+        ))
+        
+        # Linea FIRE Number
+        fig.add_hline(
+            y=fire_number,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"FIRE Number: €{fire_number:,.0f}",
+            annotation_position="right"
+        )
+        
+        # Marker FIRE raggiunto
+        fig.add_trace(go.Scatter(
+            x=[years_to_fire],
+            y=[fire_portfolio],
+            mode='markers',
+            marker=dict(size=15, color='red', symbol='star'),
+            name='FIRE Raggiunto!',
+            hovertemplate=f'Anno {years_to_fire}<br>FIRE! €{fire_portfolio:,.0f}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title=f"Simulazione FIRE - Raggiungi l'indipendenza in {years_to_fire} anni",
+            xaxis_title="Anni da Oggi",
+            yaxis_title="Valore Portafoglio (€)",
+            hovermode='x unified',
+            height=600
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Tabella Riepilogo
+        st.divider()
+        st.subheader("📊 Riepilogo Simulazione")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Fase Accumulo:**")
+            st.write(f"• Portafoglio iniziale: {format_currency(current_value)}")
+            st.write(f"• Versamenti mensili: {format_currency(monthly_contribution)}")
+            st.write(f"• CAGR: {cagr_accumulation:.2f}%")
+            st.write(f"• Durata: {years_to_fire} anni")
+            st.write(f"• Portafoglio finale: {format_currency(fire_portfolio)}")
+        
+        with col2:
+            st.write("**Fase Prelievi (FIRE):**")
+            st.write(f"• Portafoglio iniziale: {format_currency(fire_portfolio)}")
+            st.write(f"• Prelievo annuo: {format_currency(annual_expenses)}")
+            st.write(f"• CAGR: {cagr_withdrawal:.2f}%")
+            st.write(f"• Tasso prelievo: {withdrawal_rate}%")
+            st.write(f"• Portafoglio dopo 30 anni: {format_currency(withdrawal_data[min(29, len(withdrawal_data)-1)]['value'])}")
+
 
 # ==================== PAGINA IMPORTA TRANSAZIONI CSV============
 
