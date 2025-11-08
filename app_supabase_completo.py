@@ -175,31 +175,55 @@ def get_portfolio_metrics():
 # =================== CALCOLO LIQUITIDA'====================
 
 def get_saldo_liquidita():
-    """Calcola il saldo della liquidità dalle transazioni"""
+    """Calcola il saldo della liquidità considerando TUTTE le transazioni"""
     try:
         transazioni_df = supabase.get_transazioni(user_id)
         
         if transazioni_df.empty:
             return 0.0
         
-        # Filtra transazioni di liquidità
-        liquidita_df = transazioni_df[transazioni_df['ticker'] == 'LIQUIDITA']
-        
-        if liquidita_df.empty:
-            return 0.0
-        
-        # Calcola saldo
         saldo = 0.0
-        for _, trans in liquidita_df.iterrows():
-            if trans['tipo'] in ['Deposit', 'Bonifico']:
-                saldo += abs(float(trans['importo']))
-            elif trans['tipo'] in ['Withdrawal', 'Prelievo', 'Tax', 'Imposta']:
-                saldo -= abs(float(trans['importo']))
+        
+        for _, trans in transazioni_df.iterrows():
+            ticker = trans['ticker']
+            tipo = trans['tipo']
+            importo = float(trans.get('importo', 0))
+            commissioni = float(trans.get('commissioni', 0))
+            
+            # MOVIMENTI LIQUIDITÀ DIRETTI
+            if ticker == 'LIQUIDITA':
+                if tipo in ['Deposit', 'Bonifico']:
+                    # Deposito: aumenta liquidità
+                    saldo += abs(importo)
+                elif tipo in ['Withdrawal', 'Prelievo']:
+                    # Prelievo: riduce liquidità
+                    saldo -= abs(importo)
+                elif tipo in ['Tax', 'Imposta']:
+                    # Imposta: riduce liquidità
+                    saldo -= abs(importo)
+            
+            # MOVIMENTI TITOLI (impattano la liquidità)
+            else:
+                if tipo == 'Buy':
+                    # Acquisto: pago importo + commissioni (riduce liquidità)
+                    saldo -= abs(importo)
+                    saldo -= commissioni
+                elif tipo == 'Sell':
+                    # Vendita: ricevo importo - commissioni (aumenta liquidità)
+                    saldo += abs(importo)
+                    saldo -= commissioni
+                elif tipo == 'Dividend':
+                    # Dividendo: ricevo importo (aumenta liquidità)
+                    saldo += abs(importo)
         
         return saldo
+        
     except Exception as e:
         print(f"Errore calcolo liquidità: {e}")
+        import traceback
+        traceback.print_exc()
         return 0.0
+
 
 # ==================== CALCOLI ANALITICI ====================
 
