@@ -43,7 +43,7 @@ user_id = st.session_state.user.id
 # ==================== UTILITY FUNCTIONS ====================
 
 @st.cache_data(ttl=3600)
-def get_stock_data(ticker, period="1y"):
+def get_stock_data(ticker, period="5y"):
     """Recupera dati storici da yfinance"""
     try:
         data = yf.download(ticker, period=period, progress=False)
