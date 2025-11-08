@@ -650,22 +650,45 @@ def page_monitoraggio():
     leverage = st.slider("Moltiplicatore Leva", min_value=1.0, max_value=2.0, value=1.0, step=0.1)
 
     if leverage > 1.0:
-        # Leggi valori (salvati come DECIMALI: 0.035 = 3.5%)
-        euribor_decimal = float(supabase.get_config(user_id, "euribor_3m", "0.035"))
-        spread_decimal = float(supabase.get_config(user_id, "spread_credit_lombard", "0.02"))
+        # Helper per normalizzare percentuali
+        def normalize_percentage(value_str, default="0.035"):
+            """Converte valore a decimale gestendo sia decimali che percentuali"""
+            try:
+                val = float(value_str)
+                
+                # Se > 10, è chiaramente un errore (es. 210 invece di 2.1)
+                if val > 10.0:
+                    return float(default)
+                
+                # Se > 1, è espresso in % (es. 3.5)
+                if val > 1.0:
+                    return val / 100
+                
+                # Se 0-1, è già decimale (es. 0.035)
+                return val
+                
+            except:
+                return float(default)
+        
+        # Leggi e normalizza
+        euribor_decimal = normalize_percentage(
+            supabase.get_config(user_id, "euribor_3m", "0.035"),
+            "0.035"
+        )
+        
+        spread_decimal = normalize_percentage(
+            supabase.get_config(user_id, "spread_credit_lombard", "0.02"),
+            "0.02"
+        )
         
         # Costo totale in decimale
         costo_leva_totale_decimal = euribor_decimal + spread_decimal
-        
-        # Converti a percentuale per visualizzazione
         costo_leva_totale_percent = costo_leva_totale_decimal * 100
         
         # Calcoli
         valore_base = metrics['valore_totale']
         valore_con_leva = valore_base * leverage
         importo_prestito = valore_con_leva - valore_base
-        
-        # Costo annuale calcolato con decimale
         costo_leva_annuale = importo_prestito * costo_leva_totale_decimal
         
         col_a, col_b = st.columns(2)
@@ -679,7 +702,7 @@ def page_monitoraggio():
             st.metric(
                 "Costo Annuale Leva", 
                 format_currency(costo_leva_annuale), 
-                f"{costo_leva_totale_percent:.2f}% p.a."  # Mostra come % corretto
+                f"{costo_leva_totale_percent:.2f}% p.a."
             )
         
         # Breakdown dettagliato
@@ -691,8 +714,22 @@ def page_monitoraggio():
             st.write("")
             st.write(f"**Calcolo Costo Annuale:**")
             st.write(f"• Prestito: €{importo_prestito:,.2f}")
-            st.write(f"• Tasso: {costo_leva_totale_percent:.2f}%")
-            st.write(f"• Costo: €{importo_prestito:,.2f} × {costo_leva_totale_decimal:.4f} = **€{costo_leva_annuale:,.2f}**")
+            st.write(f"• Tasso annuo: {costo_leva_totale_percent:.2f}%")
+            st.write(f"• Formula: €{importo_prestito:,.2f} × {costo_leva_totale_decimal:.4f}")
+            st.write(f"• **Costo:** €{costo_leva_annuale:,.2f}")
+            
+            # Costo mensile
+            costo_mensile = costo_leva_annuale / 12
+            st.write("")
+            st.write(f"💡 **Costo mensile:** €{costo_mensile:,.2f}")
+            
+            # Warning
+            if euribor_decimal > 0.10 or spread_decimal > 0.10:
+                st.warning("⚠️ I tassi sembrano molto alti. Vai in Configurazione per verificare i parametri.")
+                
+                if st.button("🔧 Apri Configurazione"):
+                    st.switch_page("pages/configurazione.py")
+
 
 
 # ==================== PAGINA STORICO TRANSAZIONI ====================
