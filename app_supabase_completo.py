@@ -740,17 +740,17 @@ def page_analisi_portafoglio():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-       # Calcola volatilità solo per asset reali (non liquidità)
-       volatilities = []
-       for ticker in df_analysis['Ticker']:
-           try:
-               vol = calculate_volatility(ticker)
-               # Converti a float e verifica che sia valido
-               if vol is not None and not np.isnan(float(vol)) and float(vol) > 0:
-                   volatilities.append(float(vol))
-           except Exception as e:
-               print(f"Errore calcolo volatilità per {ticker}: {e}")
-               continue
+        # Calcola volatilità solo per asset reali (non liquidità)
+        volatilities = []
+        for ticker in df_analysis['Ticker']:
+            try:
+                vol = calculate_volatility(ticker)
+                # Converti a float e verifica che sia valido
+                if vol is not None and not np.isnan(float(vol)) and float(vol) > 0:
+                    volatilities.append(float(vol))
+            except Exception as e:
+                print(f"Errore calcolo volatilità per {ticker}: {e}")
+                continue
         
         if volatilities:
             avg_vol = np.mean(volatilities)
@@ -771,7 +771,6 @@ def page_analisi_portafoglio():
         except Exception as e:
             print(f"Errore calcolo Sharpe Ratio: {e}")
             st.metric("Sharpe Ratio", "N/A")
-
     
     with col3:
         max_dds = []
@@ -783,13 +782,6 @@ def page_analisi_portafoglio():
             except Exception as e:
                 print(f"Errore calcolo drawdown per {ticker}: {e}")
                 continue
-    
-    if max_dds:
-        avg_dd = np.mean(max_dds)
-        st.metric("Max Drawdown", f"{avg_dd*100:.2f}%")
-    else:
-        st.metric("Max Drawdown", "N/A")
-
         
         if max_dds:
             avg_dd = np.mean(max_dds)
@@ -813,6 +805,7 @@ def page_analisi_portafoglio():
             st.metric("Ulcer Index", f"{avg_ulcer:.2f}%")
         else:
             st.metric("Ulcer Index", "N/A")
+
 
     
     st.divider()
