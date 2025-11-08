@@ -1237,35 +1237,6 @@ def page_analisi_portafoglio():
                         cagr_90 = calculate_cagr_on_initial(p90_final, initial_value, total_contributed, n_years)
                         st.metric("CAGR 90°", f"{cagr_90:.2f}% /anno")
                     
-                    # Breakdown
-                    st.divider()
-                    st.subheader("💡 Breakdown Scenario Mediano")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.metric("💵 Capitale Iniziale", format_currency(initial_value))
-                    with col2:
-                        st.metric("➕ Versamenti Totali", format_currency(total_contributed))
-                    with col3:
-                        median_investment_gain = median_final - total_invested
-                        st.metric("💹 Guadagno da Investimenti", format_currency(median_investment_gain))
-                    
-                    # Grafico a torta breakdown
-                    breakdown_fig = go.Figure(data=[go.Pie(
-                        labels=['Capitale Iniziale', 'Versamenti PAC', 'Guadagno Investimenti'],
-                        values=[initial_value, total_contributed, max(0, median_final - total_invested)],
-                        marker=dict(colors=['#636EFA', '#EF553B', '#00CC96']),
-                        hovertemplate='%{label}<br>€%{value:,.0f}<br>%{percent}<extra></extra>'
-                    )])
-                    
-                    breakdown_fig.update_layout(
-                        title="Composizione Patrimonio Finale (Scenario Mediano)",
-                        height=400
-                    )
-                    
-                    st.plotly_chart(breakdown_fig, use_container_width=True)
-                    
                 else:
                     st.error("Errore: simulazione non ha prodotto risultati")
             
