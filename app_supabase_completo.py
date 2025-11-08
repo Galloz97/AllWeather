@@ -74,7 +74,7 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 def get_portfolio_metrics():
-    """Calcola metriche del portafoglio automaticamente dalle transazioni"""
+    """Calcola metriche del portafoglio automaticamente dalle transazioni (CORRETTO)"""
     try:
         # Recupera tutte le transazioni
         transazioni_df = supabase.get_transazioni(user_id)
@@ -92,42 +92,63 @@ def get_portfolio_metrics():
         portfolio_data = []
         
         for ticker in transazioni_asset['ticker'].unique():
-            ticker_trans = transazioni_asset[transazioni_asset['ticker'] == ticker]
+            ticker_trans = transazioni_asset[transazioni_asset['ticker'] == ticker].copy()
+            ticker_trans = ticker_trans.sort_values('data')  # Ordina per data
             
-            # Calcola quantità totale (Buy positivo, Sell negativo)
-            quantita_totale = 0
-            costo_totale = 0
+            # Metodo FIFO (First In First Out) per calcolo costo
+            posizione_attuale = 0
+            costo_medio_ponderato = 0
+            lotti = []  # Lista di (quantità, prezzo) per tracking FIFO
             
             for _, trans in ticker_trans.iterrows():
+                tipo = trans['tipo']
                 qty = float(trans['quantita'])
                 prezzo = float(trans['prezzo_unitario'])
                 
-                if trans['tipo'] == 'Buy':
-                    quantita_totale += qty
-                    costo_totale += qty * prezzo
-                elif trans['tipo'] == 'Sell':
-                    quantita_totale += qty  # qty è già negativa
-                    # Per le vendite, riduci proporzionalmente il costo
-                    if quantita_totale > 0:
-                        costo_totale += qty * prezzo
+                if tipo == 'Buy':
+                    # Acquisto: aggiungi lotto
+                    lotti.append({'qty': qty, 'prezzo': prezzo})
+                    posizione_attuale += qty
+                    
+                elif tipo == 'Sell':
+                    # Vendita: rimuovi dai lotti più vecchi (FIFO)
+                    qty_da_vendere = abs(qty)
+                    
+                    while qty_da_vendere > 0 and lotti:
+                        if lotti[0]['qty'] <= qty_da_vendere:
+                            # Vendi tutto il lotto
+                            qty_da_vendere -= lotti[0]['qty']
+                            posizione_attuale -= lotti[0]['qty']
+                            lotti.pop(0)
+                        else:
+                            # Vendi solo parte del lotto
+                            lotti[0]['qty'] -= qty_da_vendere
+                            posizione_attuale -= qty_da_vendere
+                            qty_da_vendere = 0
             
-            # Salta se quantità <= 0 (venduto tutto)
-            if quantita_totale <= 0:
+            # Se posizione <= 0, salta (venduto tutto)
+            if posizione_attuale <= 0:
                 continue
             
-            # Prezzo medio di acquisto
-            prezzo_medio_acquisto = costo_totale / quantita_totale if quantita_totale > 0 else 0
+            # Calcola prezzo medio ponderato dai lotti rimanenti
+            costo_totale = sum(lotto['qty'] * lotto['prezzo'] for lotto in lotti)
+            quantita_totale = sum(lotto['qty'] for lotto in lotti)
+            
+            if quantita_totale > 0:
+                prezzo_medio_acquisto = costo_totale / quantita_totale
+            else:
+                prezzo_medio_acquisto = 0
             
             # Prezzo corrente
             prezzo_corrente = get_current_price(ticker)
             if prezzo_corrente is None:
                 prezzo_corrente = prezzo_medio_acquisto
             
-            valore_totale = quantita_totale * prezzo_corrente
-            guadagno = valore_totale - abs(costo_totale)
-            guadagno_pct = (guadagno / abs(costo_totale) * 100) if costo_totale != 0 else 0
+            valore_totale = posizione_attuale * prezzo_corrente
+            guadagno = valore_totale - costo_totale
+            guadagno_pct = (guadagno / costo_totale * 100) if costo_totale > 0 else 0
             
-            # Determina asset class dal ticker
+            # Determina asset class
             if ticker.endswith('.MI'):
                 asset_class = 'ETF'
             else:
@@ -135,11 +156,11 @@ def get_portfolio_metrics():
             
             portfolio_data.append({
                 'Ticker': ticker,
-                'Quantità': quantita_totale,
+                'Quantità': posizione_attuale,
                 'Prezzo Acq.': prezzo_medio_acquisto,
                 'Prezzo Att.': prezzo_corrente,
                 'Valore Totale': valore_totale,
-                'Costo Totale': abs(costo_totale),
+                'Costo Totale': costo_totale,
                 'P&L €': guadagno,
                 'P&L %': guadagno_pct,
                 'Asset Class': asset_class
@@ -169,7 +190,10 @@ def get_portfolio_metrics():
         
     except Exception as e:
         print(f"Errore calcolo portafoglio: {e}")
+        import traceback
+        traceback.print_exc()
         return None, pd.DataFrame()
+
 
 
 # =================== CALCOLO LIQUITIDA'====================
