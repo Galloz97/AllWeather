@@ -89,14 +89,31 @@ def process_csv(csv_file_path, user_id: str, supabase_client):
             return None
         if isinstance(val, (float, int)):
             return float(val)
-        val = str(val).replace("€", "").replace(" ", "").strip()
-        # Rimuovi separatori migliaia (punto) e sostituisci virgola decimale con punto
-        val = val.replace(".", "")
-        val = val.replace(",", ".")
+        
+        val = str(val).replace("€", "").strip()
+        
+        # Gestione formato italiano: 1.234,56 → 1234.56
+        # Gestione formato inglese: 1,234.56 → 1234.56
+        
+        # Se c'è sia punto che virgola, dipende dall'ordine
+        if "," in val and "." in val:
+            # Se la virgola è dopo il punto → formato italiano (1.234,56)
+            if val.rindex(",") > val.rindex("."):
+                val = val.replace(".", "")  # Rimuovi separatore migliaia
+                val = val.replace(",", ".")  # Virgola diventa punto decimale
+            # Altrimenti formato inglese (1,234.56)
+            else:
+                val = val.replace(",", "")  # Rimuovi separatore migliaia
+        # Solo virgola → assume formato italiano (1234,56)
+        elif "," in val:
+            val = val.replace(",", ".")
+        # Solo punto → già formato corretto (1234.56)
+        
         try:
             return float(val)
         except Exception:
             return None
+
 
     def parse_date(x):
         try:
