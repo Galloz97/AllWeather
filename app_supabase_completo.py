@@ -757,13 +757,6 @@ def page_analisi_portafoglio():
             st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
         else:
             st.metric("Volatilità Annualizzata", "N/A")
-
-        
-        if volatilities:
-            avg_vol = np.mean(volatilities)
-            st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
-        else:
-            st.metric("Volatilità Annualizzata", "N/A")
     
     with col2:
         try:
