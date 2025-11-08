@@ -1252,7 +1252,7 @@ def page_analisi_portafoglio():
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
 def page_simulazione_fire():
-    """Pagina Simulazione FIRE - Input manuale CAGR"""
+    """Pagina Simulazione FIRE - Input manuale CAGR, mostra sempre il grafico"""
     st.title("🔥 Simulazione FIRE (Financial Independence, Retire Early)")
     
     metrics, df = get_portfolio_metrics()
@@ -1261,7 +1261,7 @@ def page_simulazione_fire():
         st.info("📭 Nessun dato portafoglio per simulazione FIRE")
         return
     
-    st.info("💡 **FIRE Calculator**: Calcola quando raggiungerai l'indipendenza finanziaria")
+    st.info("💡 **FIRE Calculator**: Calcola indipendenza finanziaria")
     
     # Parametri FIRE
     st.subheader("💰 Parametri Simulazione")
@@ -1288,7 +1288,7 @@ def page_simulazione_fire():
             max_value=500000,
             value=30000,
             step=1000,
-            help="Quanto vuoi spendere all'anno una volta raggiunto FIRE"
+            help="Quanto vuoi spendere all'anno dopo FIRE"
         )
     
     col1, col2, col3 = st.columns(3)
@@ -1300,7 +1300,7 @@ def page_simulazione_fire():
             max_value=20.0,
             value=4.0,
             step=0.1,
-            help="Tasso di crescita annuo durante fase accumulo (es. 3.21% da Monte Carlo)"
+            help="Tasso di crescita annuo durante accumulo"
         )
     
     with col2:
@@ -1310,7 +1310,7 @@ def page_simulazione_fire():
             max_value=20.0,
             value=3.0,
             step=0.1,
-            help="Tasso di crescita durante fase prelievi (più conservativo)"
+            help="Tasso di crescita annuo durante prelievi"
         )
     
     with col3:
@@ -1320,103 +1320,79 @@ def page_simulazione_fire():
             max_value=10.0,
             value=4.0,
             step=0.5,
-            help="Regola del 4% = standard FIRE"
+            help="Regola del 4%"
         )
     
-    # Calcolo FIRE Number
     fire_number = annual_expenses / (withdrawal_rate / 100)
     
     st.divider()
-    
-    # Simulazione
     st.subheader("🎯 Risultati Simulazione FIRE")
     
     if st.button("🚀 Simula FIRE", type="primary"):
-        # Fase Accumulo
-        years_to_fire = 0
+        years_to_fire = None
         portfolio_value = current_value
         monthly_rate = cagr_accumulation / 100 / 12
         
         accumulation_data = []
         
-        # Simula fino a raggiungere FIRE Number
         max_years = 50
+        fire_reached = False
+        
         for year in range(max_years):
             for month in range(12):
                 portfolio_value = portfolio_value * (1 + monthly_rate) + monthly_contribution
             
-            accumulation_data.append({
-                'year': year,
-                'value': portfolio_value
-            })
+            accumulation_data.append({'year': year, 'value': portfolio_value})
             
-            if portfolio_value >= fire_number:
+            if not fire_reached and portfolio_value >= fire_number:
                 years_to_fire = year + 1
-                break
+                fire_reached = True
         
-        if portfolio_value < fire_number:
-            st.warning(f"⚠️ Non raggiungi il FIRE Number in {max_years} anni. Aumenta i versamenti o riduci le spese.")
-            return
+        if years_to_fire is None:
+            # FIRE mai raggiunto
+            years_to_fire = max_years
         
-        # Fase Prelievi
         withdrawal_data = []
         fire_portfolio = portfolio_value
         annual_withdrawal = annual_expenses
         withdrawal_years = 40
         
         for year in range(withdrawal_years):
-            # Prelievo annuale
             fire_portfolio -= annual_withdrawal
-            
-            # Crescita del portafoglio
             fire_portfolio *= (1 + cagr_withdrawal / 100)
+            fire_portfolio = max(fire_portfolio, 0)
             
-            withdrawal_data.append({
-                'year': years_to_fire + year,
-                'value': max(0, fire_portfolio)
-            })
+            withdrawal_data.append({'year': fire_reached and (years_to_fire + year) or (year + max_years), 'value': fire_portfolio})
             
             if fire_portfolio <= 0:
-                st.warning(f"⚠️ Il portafoglio si esaurisce dopo {year} anni di prelievi")
+                st.warning(f"⚠️ Portafoglio si esaurisce dopo {year} anni di prelievi")
                 break
         
-        # Metriche Risultati
+        # Mostra i risultati anche se FIRE non raggiunto
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric("🎯 FIRE Number", format_currency(fire_number))
-        
         with col2:
-            st.metric("⏱️ Anni per FIRE", f"{years_to_fire} anni")
-        
+            st.metric("⏱️ Anni per FIRE", f"{years_to_fire} anni" + ("" if fire_reached else " (non raggiunto)"))
         with col3:
-            fire_age = 30  # Default
-            if 'user_age' in st.session_state:
-                fire_age = st.session_state['user_age']
-            else:
-                fire_age = st.number_input("Età attuale", min_value=18, max_value=80, value=30, key='fire_age_input')
-                st.session_state['user_age'] = fire_age
-            
+            fire_age = st.number_input("Età attuale", min_value=18, max_value=80, value=30)
             st.metric("🎂 Età al FIRE", f"{fire_age + years_to_fire} anni")
-        
         with col4:
             total_contributed = monthly_contribution * 12 * years_to_fire
             st.metric("💰 Totale Versato", format_currency(total_contributed))
         
         st.divider()
         
-        # Grafico
         st.subheader("📈 Evoluzione Portafoglio: Accumulo → FIRE → Prelievi")
         
         accumulation_years = [d['year'] for d in accumulation_data]
         accumulation_values = [d['value'] for d in accumulation_data]
-        
         withdrawal_years_list = [d['year'] for d in withdrawal_data]
         withdrawal_values = [d['value'] for d in withdrawal_data]
         
         fig = go.Figure()
         
-        # Fase Accumulo
         fig.add_trace(go.Scatter(
             x=accumulation_years,
             y=accumulation_values,
@@ -1428,7 +1404,6 @@ def page_simulazione_fire():
             hovertemplate='Anno: %{x}<br>Valore: €%{y:,.0f}<extra></extra>'
         ))
         
-        # Fase Prelievi
         fig.add_trace(go.Scatter(
             x=withdrawal_years_list,
             y=withdrawal_values,
@@ -1440,7 +1415,6 @@ def page_simulazione_fire():
             hovertemplate='Anno: %{x}<br>Valore: €%{y:,.0f}<extra></extra>'
         ))
         
-        # Linea FIRE Number
         fig.add_hline(
             y=fire_number,
             line_dash="dash",
@@ -1449,18 +1423,18 @@ def page_simulazione_fire():
             annotation_position="right"
         )
         
-        # Marker FIRE
-        fig.add_trace(go.Scatter(
-            x=[years_to_fire],
-            y=[fire_portfolio],
-            mode='markers',
-            marker=dict(size=15, color='red', symbol='star'),
-            name='FIRE Raggiunto!',
-            hovertemplate=f'Anno {years_to_fire}<br>FIRE! €{fire_portfolio:,.0f}<extra></extra>'
-        ))
+        if fire_reached:
+            fig.add_trace(go.Scatter(
+                x=[years_to_fire],
+                y=[fire_portfolio],
+                mode='markers',
+                marker=dict(size=15, color='red', symbol='star'),
+                name='FIRE Raggiunto!',
+                hovertemplate=f'Anno {years_to_fire}<br>FIRE! €{fire_portfolio:,.0f}<extra></extra>'
+            ))
         
         fig.update_layout(
-            title=f"Simulazione FIRE - Indipendenza in {years_to_fire} anni (CAGR: {cagr_accumulation}%)",
+            title=f"Simulazione FIRE - Indipendenza in {years_to_fire} anni",
             xaxis_title="Anni da Oggi",
             yaxis_title="Valore Portafoglio (€)",
             hovermode='x unified',
@@ -1468,29 +1442,7 @@ def page_simulazione_fire():
         )
         
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Riepilogo
-        st.divider()
-        st.subheader("📊 Riepilogo Simulazione")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Fase Accumulo:**")
-            st.write(f"• Portafoglio iniziale: {format_currency(current_value)}")
-            st.write(f"• Versamenti mensili: {format_currency(monthly_contribution)}")
-            st.write(f"• CAGR: {cagr_accumulation:.2f}%")
-            st.write(f"• Durata: {years_to_fire} anni")
-            st.write(f"• Portafoglio finale: {format_currency(fire_portfolio)}")
-        
-        with col2:
-            st.write("**Fase Prelievi (FIRE):**")
-            st.write(f"• Portafoglio iniziale: {format_currency(fire_portfolio)}")
-            st.write(f"• Prelievo annuo: {format_currency(annual_expenses)}")
-            st.write(f"• CAGR: {cagr_withdrawal:.2f}%")
-            st.write(f"• Tasso prelievo: {withdrawal_rate}%")
-            if len(withdrawal_data) > 29:
-                st.write(f"• Portafoglio dopo 30 anni: {format_currency(withdrawal_data[29]['value'])}")
+
 
 
 
