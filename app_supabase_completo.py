@@ -74,60 +74,103 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 def get_portfolio_metrics():
-    """Calcola metriche principali del portafoglio"""
-    portafoglio_df = supabase.get_portafoglio(user_id)
-    
-    if portafoglio_df.empty:
-        return None, portafoglio_df
-    
-    portfolio_data = []
-    total_valore = 0
-    total_costo = 0
-    
-    for _, asset in portafoglio_df.iterrows():
-        ticker = asset['ticker']
-        quantita = asset['quantita']
-        prezzo_acquisto = asset['prezzo_acquisto']
+    """Calcola metriche del portafoglio automaticamente dalle transazioni"""
+    try:
+        # Recupera tutte le transazioni
+        transazioni_df = supabase.get_transazioni(user_id)
         
-        prezzo_corrente = get_current_price(ticker)
-        if prezzo_corrente is None:
-            prezzo_corrente = prezzo_acquisto
+        if transazioni_df.empty:
+            return None, pd.DataFrame()
         
-        valore_totale = quantita * prezzo_corrente
-        costo_totale = quantita * prezzo_acquisto
-        guadagno = valore_totale - costo_totale
-        guadagno_pct = (guadagno / costo_totale * 100) if costo_totale > 0 else 0
+        # Escludi liquidità dal calcolo asset
+        transazioni_asset = transazioni_df[transazioni_df['ticker'] != 'LIQUIDITA'].copy()
         
-        portfolio_data.append({
-            'Ticker': ticker,
-            'Quantità': quantita,
-            'Prezzo Acq.': prezzo_acquisto,
-            'Prezzo Att.': prezzo_corrente,
-            'Valore Totale': valore_totale,
-            'Costo Totale': costo_totale,
-            'P&L €': guadagno,
-            'P&L %': guadagno_pct,
-            'Asset Class': asset.get('asset_class', 'ETF')
-        })
+        if transazioni_asset.empty:
+            return None, pd.DataFrame()
         
-        total_valore += valore_totale
-        total_costo += costo_totale
-    
-    df = pd.DataFrame(portfolio_data)
-    df['Peso %'] = (df['Valore Totale'] / total_valore * 100) if total_valore > 0 else 0
-    
-    total_guadagno = total_valore - total_costo
-    total_guadagno_pct = (total_guadagno / total_costo * 100) if total_costo > 0 else 0
-    
-    metrics = {
-        'valore_totale': total_valore,
-        'costo_totale': total_costo,
-        'guadagno_totale': total_guadagno,
-        'guadagno_pct': total_guadagno_pct,
-        'df': df
-    }
-    
-    return metrics, df
+        # Calcola posizione per ogni ticker
+        portfolio_data = []
+        
+        for ticker in transazioni_asset['ticker'].unique():
+            ticker_trans = transazioni_asset[transazioni_asset['ticker'] == ticker]
+            
+            # Calcola quantità totale (Buy positivo, Sell negativo)
+            quantita_totale = 0
+            costo_totale = 0
+            
+            for _, trans in ticker_trans.iterrows():
+                qty = float(trans['quantita'])
+                prezzo = float(trans['prezzo_unitario'])
+                
+                if trans['tipo'] == 'Buy':
+                    quantita_totale += qty
+                    costo_totale += qty * prezzo
+                elif trans['tipo'] == 'Sell':
+                    quantita_totale += qty  # qty è già negativa
+                    # Per le vendite, riduci proporzionalmente il costo
+                    if quantita_totale > 0:
+                        costo_totale += qty * prezzo
+            
+            # Salta se quantità <= 0 (venduto tutto)
+            if quantita_totale <= 0:
+                continue
+            
+            # Prezzo medio di acquisto
+            prezzo_medio_acquisto = costo_totale / quantita_totale if quantita_totale > 0 else 0
+            
+            # Prezzo corrente
+            prezzo_corrente = get_current_price(ticker)
+            if prezzo_corrente is None:
+                prezzo_corrente = prezzo_medio_acquisto
+            
+            valore_totale = quantita_totale * prezzo_corrente
+            guadagno = valore_totale - abs(costo_totale)
+            guadagno_pct = (guadagno / abs(costo_totale) * 100) if costo_totale != 0 else 0
+            
+            # Determina asset class dal ticker
+            if ticker.endswith('.MI'):
+                asset_class = 'ETF'
+            else:
+                asset_class = 'Azioni'
+            
+            portfolio_data.append({
+                'Ticker': ticker,
+                'Quantità': quantita_totale,
+                'Prezzo Acq.': prezzo_medio_acquisto,
+                'Prezzo Att.': prezzo_corrente,
+                'Valore Totale': valore_totale,
+                'Costo Totale': abs(costo_totale),
+                'P&L €': guadagno,
+                'P&L %': guadagno_pct,
+                'Asset Class': asset_class
+            })
+        
+        if not portfolio_data:
+            return None, pd.DataFrame()
+        
+        df = pd.DataFrame(portfolio_data)
+        
+        total_valore = df['Valore Totale'].sum()
+        total_costo = df['Costo Totale'].sum()
+        df['Peso %'] = (df['Valore Totale'] / total_valore * 100) if total_valore > 0 else 0
+        
+        total_guadagno = total_valore - total_costo
+        total_guadagno_pct = (total_guadagno / total_costo * 100) if total_costo > 0 else 0
+        
+        metrics = {
+            'valore_totale': total_valore,
+            'costo_totale': total_costo,
+            'guadagno_totale': total_guadagno,
+            'guadagno_pct': total_guadagno_pct,
+            'df': df
+        }
+        
+        return metrics, df
+        
+    except Exception as e:
+        print(f"Errore calcolo portafoglio: {e}")
+        return None, pd.DataFrame()
+
 
 # =================== CALCOLO LIQUITIDA'====================
 
@@ -339,9 +382,9 @@ def page_monitoraggio():
         stats = supabase.get_statistiche_transazioni(user_id)
         st.metric("Commissioni Totali", format_currency(stats.get('commissioni_totale', 0)))
     
-    st.divider()
-
-    # Mostra saldo liquidità
+        st.divider()
+    
+    # Calcola e mostra sempre la liquidità
     saldo_liquidita = get_saldo_liquidita()
     
     col1, col2 = st.columns([2, 1])
@@ -352,8 +395,9 @@ def page_monitoraggio():
     with col2:
         st.metric("💰 Liquidità Disponibile", format_currency(saldo_liquidita))
     
-    # Aggiungi liquidità al dataframe se > 0
-    if metrics and saldo_liquidita > 0:
+    # Se ci sono asset, mostra la tabella
+    if metrics:
+        # Aggiungi liquidità al dataframe
         liquidita_row = pd.DataFrame([{
             'Ticker': 'LIQUIDITA',
             'Quantità': saldo_liquidita,
@@ -364,88 +408,60 @@ def page_monitoraggio():
             'P&L €': 0,
             'P&L %': 0,
             'Asset Class': 'Cash',
-            'Peso %': (saldo_liquidita / (metrics['valore_totale'] + saldo_liquidita) * 100)
+            'Peso %': 0
         }])
         
         df = pd.concat([df, liquidita_row], ignore_index=True)
         
-        # Ricalcola pesi con liquidità
+        # Ricalcola pesi con liquidità inclusa
         totale_con_liquidita = metrics['valore_totale'] + saldo_liquidita
         df['Peso %'] = (df['Valore Totale'] / totale_con_liquidita * 100)
-    
-    # Tabella Portafoglio
-    st.subheader("Composizione Portafoglio")
-    
-    display_df = df.copy()
-    display_df['Prezzo Acq.'] = display_df['Prezzo Acq.'].apply(lambda x: f"€{x:.2f}")
-    display_df['Prezzo Att.'] = display_df['Prezzo Att.'].apply(lambda x: f"€{x:.2f}")
-    display_df['Valore Totale'] = display_df['Valore Totale'].apply(format_currency)
-    display_df['Costo Totale'] = display_df['Costo Totale'].apply(format_currency)
-    display_df['P&L €'] = display_df['P&L €'].apply(format_currency)
-    display_df['P&L %'] = display_df['P&L %'].apply(format_percentage)
-    display_df['Peso %'] = display_df['Peso %'].apply(format_percentage)
-    
-    st.dataframe(display_df, use_container_width=True)
-    
-    # Grafici
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.pie(
-            df,
-            values='Valore Totale',
-            names='Ticker',
-            title="Composizione Portafoglio per Valore"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        fig = px.bar(
-            df.sort_values('P&L %', ascending=False),
-            x='Ticker',
-            y='P&L %',
-            title="Rendimento per Asset",
-            color='P&L %',
-            color_continuous_scale=['red', 'yellow', 'green']
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    st.divider()
-    
-    # Gestione Portafoglio
-    st.subheader("➕ Aggiungi Nuovo Asset")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        ticker = st.text_input("Ticker", key="add_ticker")
-    with col2:
-        quantita = st.number_input("Quantità", min_value=0.0, key="add_quantita")
-    with col3:
-        prezzo = st.number_input("Prezzo Acquisto (€)", min_value=0.0, key="add_prezzo")
-    with col4:
-        asset_class = st.selectbox("Classe Asset", ["Azioni", "ETF", "Obbligazioni", "Cripto", "Liquidità"], key="add_class")
-    
-    if st.button("✅ Aggiungi"):
-        if ticker and quantita > 0 and prezzo > 0:
-            result = supabase.add_portafoglio_asset(
-                user_id=user_id,
-                ticker=ticker.upper(),
-                quantita=quantita,
-                prezzo_acquisto=prezzo,
-                asset_class=asset_class
+        
+        # Mostra tabella
+        display_df = df.copy()
+        display_df['Prezzo Acq.'] = display_df['Prezzo Acq.'].apply(lambda x: f"€{x:.2f}")
+        display_df['Prezzo Att.'] = display_df['Prezzo Att.'].apply(lambda x: f"€{x:.2f}")
+        display_df['Valore Totale'] = display_df['Valore Totale'].apply(format_currency)
+        display_df['Costo Totale'] = display_df['Costo Totale'].apply(format_currency)
+        display_df['P&L €'] = display_df['P&L €'].apply(format_currency)
+        display_df['P&L %'] = display_df['P&L %'].apply(format_percentage)
+        display_df['Peso %'] = display_df['Peso %'].apply(format_percentage)
+        
+        st.dataframe(display_df, use_container_width=True)
+        
+        # Grafici
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.pie(
+                df,
+                values='Valore Totale',
+                names='Ticker',
+                title="Composizione Portafoglio (inclusa liquidità)"
             )
-            
-            if result['success']:
-                st.success(f"✓ {ticker.upper()} aggiunto!")
-                st.rerun()
-            else:
-                st.error(f"Errore: {result['error']}")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig = px.bar(
+                df[df['Ticker'] != 'LIQUIDITA'].sort_values('P&L %', ascending=False),
+                x='Ticker',
+                y='P&L %',
+                title="Rendimento per Asset",
+                color='P&L %',
+                color_continuous_scale=['red', 'yellow', 'green']
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        # Solo liquidità disponibile
+        if saldo_liquidita > 0:
+            st.info(f"💰 Hai {format_currency(saldo_liquidita)} di liquidità disponibile ma nessun asset in portafoglio.")
         else:
-            st.warning("Inserisci valori validi")
+            st.info("📭 Nessun asset in portafoglio e nessuna liquidità disponibile.")
     
     st.divider()
-    
+
+    st.info("ℹ️ **Nota:** Il portafoglio viene calcolato automaticamente dalle transazioni. Per aggiungere asset, vai alla sezione 'Storico' o 'Importa CSV'.")
+
     # Leva Finanziaria
     st.subheader("💰 Leva Finanziaria (Credit Lombard)")
     
