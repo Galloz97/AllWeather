@@ -1252,7 +1252,7 @@ def page_analisi_portafoglio():
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
 def page_simulazione_fire():
-    """Pagina Simulazione FIRE - Usa parametri da Configurazione"""
+    """Pagina Simulazione FIRE con validazione"""
     st.title("🔥 Simulazione FIRE (Financial Independence, Retire Early)")
     
     metrics, df = get_portfolio_metrics()
@@ -1261,20 +1261,45 @@ def page_simulazione_fire():
         st.info("📭 Nessun dato portafoglio per simulazione FIRE")
         return
     
-    st.info("💡 **FIRE Calculator**: I valori di default provengono dalla pagina Configurazione")
+    # Helper per validare valori
+    def safe_float(config_value, default, min_val=None, max_val=None):
+        """Leggi e valida un valore float dalla config"""
+        try:
+            val = float(config_value)
+            if min_val is not None:
+                val = max(min_val, val)
+            if max_val is not None:
+                val = min(max_val, val)
+            return val
+        except:
+            return float(default)
     
-    # LEGGI parametri dalla configurazione
-    tasso_risk_free = float(supabase.get_config(user_id, "tasso_risk_free", "0.025"))
-    inflazione = float(supabase.get_config(user_id, "inflazione", "0.02"))
-    orizzonte_temporale = int(supabase.get_config(user_id, "orizzonte_temporale", "30"))
-    versamento_mensile = float(supabase.get_config(user_id, "versamento_mensile", "500"))
+    def safe_int(config_value, default, min_val=None, max_val=None):
+        """Leggi e valida un valore int dalla config"""
+        try:
+            val = int(config_value)
+            if min_val is not None:
+                val = max(min_val, val)
+            if max_val is not None:
+                val = min(max_val, val)
+            return val
+        except:
+            return int(default)
     
-    # Prova a leggere anche altri parametri FIRE se esistono
-    tasso_prelievo_default = float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0"))
-    spese_annue_default = float(supabase.get_config(user_id, "spese_annue_fire", "30000"))
-    eta_attuale_default = int(supabase.get_config(user_id, "eta_attuale", "30"))
-    cagr_accumulo_default = float(supabase.get_config(user_id, "cagr_accumulo", "4.0"))
-    cagr_prelievi_default = float(supabase.get_config(user_id, "cagr_prelievi", "3.0"))
+    st.info("💡 **FIRE Calculator**: Valori di default dalla Configurazione")
+    
+    # LEGGI e VALIDA parametri dalla configurazione
+    tasso_risk_free = safe_float(supabase.get_config(user_id, "tasso_risk_free", "0.025"), "0.025", 0.0, 0.2)
+    inflazione_decimal = safe_float(supabase.get_config(user_id, "inflazione", "0.02"), "0.02", 0.0, 0.2)
+    orizzonte_temporale = safe_int(supabase.get_config(user_id, "orizzonte_temporale", "30"), "30", 1, 50)
+    versamento_mensile_default = safe_float(supabase.get_config(user_id, "versamento_mensile", "500"), "500", 0, 50000)
+    
+    # Parametri FIRE
+    tasso_prelievo_default = safe_float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0"), "4.0", 1.0, 10.0)
+    spese_annue_default = safe_float(supabase.get_config(user_id, "spese_annue_fire", "30000"), "30000", 0, 500000)
+    eta_attuale_default = safe_int(supabase.get_config(user_id, "eta_attuale", "30"), "30", 18, 80)
+    cagr_accumulo_default = safe_float(supabase.get_config(user_id, "cagr_accumulo", "4.0"), "4.0", 0.0, 20.0)
+    cagr_prelievi_default = safe_float(supabase.get_config(user_id, "cagr_prelievi", "3.0"), "3.0", 0.0, 20.0)
     
     # Parametri FIRE
     st.subheader("💰 Parametri Simulazione")
@@ -1290,7 +1315,7 @@ def page_simulazione_fire():
             "Versamento mensile (€)",
             min_value=0,
             max_value=50000,
-            value=int(versamento_mensile),  # Da configurazione
+            value=int(versamento_mensile_default),
             step=100,
             help="Default dalla Configurazione"
         )
@@ -1300,7 +1325,7 @@ def page_simulazione_fire():
             "Spese annue desiderate (€)",
             min_value=0,
             max_value=500000,
-            value=int(spese_annue_default),  # Da configurazione
+            value=int(spese_annue_default),
             step=1000,
             help="Quanto vuoi spendere all'anno dopo FIRE"
         )
@@ -1312,7 +1337,7 @@ def page_simulazione_fire():
             "CAGR Accumulo (%)",
             min_value=0.0,
             max_value=20.0,
-            value=cagr_accumulo_default,  # Da configurazione o input utente
+            value=cagr_accumulo_default,
             step=0.1,
             help="Tasso di crescita annuo durante accumulo"
         )
@@ -1322,7 +1347,7 @@ def page_simulazione_fire():
             "CAGR Prelievi (%)",
             min_value=0.0,
             max_value=20.0,
-            value=cagr_prelievi_default,  # Da configurazione
+            value=cagr_prelievi_default,
             step=0.1,
             help="Tasso di crescita annuo durante prelievi"
         )
@@ -1332,7 +1357,7 @@ def page_simulazione_fire():
             "Tasso Prelievo Annuo (%)",
             min_value=1.0,
             max_value=10.0,
-            value=tasso_prelievo_default,  # Da configurazione
+            value=tasso_prelievo_default,  # Ora validato
             step=0.5,
             help="Regola del 4%"
         )
@@ -1342,7 +1367,7 @@ def page_simulazione_fire():
             "Inflazione annua (%)",
             min_value=0.0,
             max_value=10.0,
-            value=inflazione * 100,  # Da configurazione
+            value=inflazione_decimal * 100,  # Converti da decimale a %
             step=0.1,
             help="Tasso inflazione per indicizzare le spese"
         )
@@ -1352,7 +1377,7 @@ def page_simulazione_fire():
         "Età attuale",
         min_value=18,
         max_value=80,
-        value=eta_attuale_default,  # Da configurazione
+        value=eta_attuale_default,
         help="Inserisci la tua età attuale"
     )
     
