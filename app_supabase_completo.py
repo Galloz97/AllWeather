@@ -667,7 +667,7 @@ def page_monitoraggio():
         
         with col_b:
             st.metric("Valore con Leva", format_currency(valore_con_leva))
-            st.metric("Costo Annuale Leva", format_currency(costo_leva_annuale), f"{costo_leva_totale:.2f}% p.a.")
+            st.metric("Costo Annuale Leva", format_currency(costo_leva_annuale), f"{costo_leva_totale*100:.2f}% p.a.")
 
 # ==================== PAGINA STORICO TRANSAZIONI ====================
 
