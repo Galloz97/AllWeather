@@ -648,16 +648,25 @@ def page_monitoraggio():
     st.subheader("💰 Leva Finanziaria (Credit Lombard)")
     
     leverage = st.slider("Moltiplicatore Leva", min_value=1.0, max_value=2.0, value=1.0, step=0.1)
-    
+
     if leverage > 1.0:
-        euribor = float(supabase.get_config(user_id, "euribor_3m", "0.035"))
-        spread = float(supabase.get_config(user_id, "spread_credit_lombard", "0.02"))
-        costo_leva_totale = euribor + spread
+        # Leggi valori (salvati come DECIMALI: 0.035 = 3.5%)
+        euribor_decimal = float(supabase.get_config(user_id, "euribor_3m", "0.035"))
+        spread_decimal = float(supabase.get_config(user_id, "spread_credit_lombard", "0.02"))
         
+        # Costo totale in decimale
+        costo_leva_totale_decimal = euribor_decimal + spread_decimal
+        
+        # Converti a percentuale per visualizzazione
+        costo_leva_totale_percent = costo_leva_totale_decimal * 100
+        
+        # Calcoli
         valore_base = metrics['valore_totale']
         valore_con_leva = valore_base * leverage
         importo_prestito = valore_con_leva - valore_base
-        costo_leva_annuale = importo_prestito * costo_leva_totale
+        
+        # Costo annuale calcolato con decimale
+        costo_leva_annuale = importo_prestito * costo_leva_totale_decimal
         
         col_a, col_b = st.columns(2)
         
@@ -667,7 +676,24 @@ def page_monitoraggio():
         
         with col_b:
             st.metric("Valore con Leva", format_currency(valore_con_leva))
-            st.metric("Costo Annuale Leva", format_currency(costo_leva_annuale), f"{costo_leva_totale:.2f}% p.a.")
+            st.metric(
+                "Costo Annuale Leva", 
+                format_currency(costo_leva_annuale), 
+                f"{costo_leva_totale_percent:.2f}% p.a."  # Mostra come % corretto
+            )
+        
+        # Breakdown dettagliato
+        with st.expander("🔍 Dettaglio Costo Leva"):
+            st.write(f"**Composizione Tasso:**")
+            st.write(f"• Euribor 3M: {euribor_decimal * 100:.2f}%")
+            st.write(f"• Spread Lombard: {spread_decimal * 100:.2f}%")
+            st.write(f"• **Totale:** {costo_leva_totale_percent:.2f}%")
+            st.write("")
+            st.write(f"**Calcolo Costo Annuale:**")
+            st.write(f"• Prestito: €{importo_prestito:,.2f}")
+            st.write(f"• Tasso: {costo_leva_totale_percent:.2f}%")
+            st.write(f"• Costo: €{importo_prestito:,.2f} × {costo_leva_totale_decimal:.4f} = **€{costo_leva_annuale:,.2f}**")
+
 
 # ==================== PAGINA STORICO TRANSAZIONI ====================
 
