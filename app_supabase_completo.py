@@ -1796,35 +1796,103 @@ def page_configurazione():
             help="Rendimento atteso in fase prelievi (es. 3.0%)"
         )
     
+    # NUOVO: Parametri Leva Finanziaria
+    st.divider()
+    st.subheader("📈 Parametri Leva Finanziaria")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Leggi euribor (potrebbe essere salvato come decimale o percentuale)
+        euribor_saved = supabase.get_config(user_id, "euribor_3m", "0.035")
+        euribor_val = safe_float(euribor_saved, "0.035", 0.0, 0.2)
+        
+        # Auto-detect: se > 1, è stato salvato come %
+        if euribor_val > 1.0:
+            euribor_val = euribor_val / 100
+        
+        euribor_3m = st.number_input(
+            "Euribor 3M (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=euribor_val * 100,  # Mostra come %
+            step=0.1,
+            help="Tasso Euribor 3 mesi (es. 3.5% = tasso interbancario)"
+        )
+    
+    with col2:
+        # Leggi spread
+        spread_saved = supabase.get_config(user_id, "spread_credit_lombard", "0.02")
+        spread_val = safe_float(spread_saved, "0.02", 0.0, 0.1)
+        
+        # Auto-detect
+        if spread_val > 1.0:
+            spread_val = spread_val / 100
+        
+        spread_lombard = st.number_input(
+            "Spread Credito Lombard (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=spread_val * 100,  # Mostra come %
+            step=0.1,
+            help="Spread sul credito lombard (es. 2.0% = costo aggiuntivo della banca)"
+        )
+    
+    # Info tasso totale
+    tasso_totale_leva = euribor_3m + spread_lombard
+    st.info(f"💰 **Costo totale leva finanziaria:** {tasso_totale_leva:.2f}% p.a. (Euribor {euribor_3m:.2f}% + Spread {spread_lombard:.2f}%)")
+    
     st.divider()
     
-    # Salva
+    # Bottone Salva
     if st.button("💾 Salva Configurazione", type="primary"):
-        # Salva risk-free e inflazione come DECIMALI (0.025 = 2.5%)
+        # Salva parametri generali
         supabase.set_config(user_id, "tasso_risk_free", str(tasso_risk_free / 100))
         supabase.set_config(user_id, "inflazione", str(inflazione / 100))
-        
-        # Salva altri valori
         supabase.set_config(user_id, "orizzonte_temporale", str(orizzonte_temporale))
+        
+        # Salva PAC
         supabase.set_config(user_id, "versamento_mensile", str(versamento_mensile))
         supabase.set_config(user_id, "versamento_annuale", str(versamento_annuale))
+        
+        # Salva FIRE
         supabase.set_config(user_id, "eta_attuale", str(eta_attuale))
         supabase.set_config(user_id, "spese_annue_fire", str(spese_annue_fire))
-        
-        # Salva CAGR e tasso prelievo come PERCENTUALI (4.0 = 4%)
         supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo_fire))
         supabase.set_config(user_id, "cagr_accumulo", str(cagr_accumulo))
         supabase.set_config(user_id, "cagr_prelievi", str(cagr_prelievi))
+        
+        # NUOVO: Salva parametri leva come DECIMALI
+        supabase.set_config(user_id, "euribor_3m", str(euribor_3m / 100))
+        supabase.set_config(user_id, "spread_credit_lombard", str(spread_lombard / 100))
         
         st.success("✅ Configurazione salvata!")
         
         # Mostra riepilogo
         with st.expander("📋 Riepilogo valori salvati"):
+            st.write("**Parametri Generali:**")
             st.write(f"• Tasso Risk-Free: {tasso_risk_free}% (salvato: {tasso_risk_free/100:.4f})")
             st.write(f"• Inflazione: {inflazione}% (salvato: {inflazione/100:.4f})")
-            st.write(f"• CAGR Accumulo: {cagr_accumulo}% (salvato: {cagr_accumulo})")
-            st.write(f"• CAGR Prelievi: {cagr_prelievi}% (salvato: {cagr_prelievi})")
-            st.write(f"• Tasso Prelievo: {tasso_prelievo_fire}% (salvato: {tasso_prelievo_fire})")
+            st.write(f"• Orizzonte: {orizzonte_temporale} anni")
+            
+            st.write("")
+            st.write("**Parametri PAC:**")
+            st.write(f"• Versamento mensile: €{versamento_mensile:,.0f}")
+            st.write(f"• Versamento annuale: €{versamento_annuale:,.0f}")
+            
+            st.write("")
+            st.write("**Parametri FIRE:**")
+            st.write(f"• Età attuale: {eta_attuale} anni")
+            st.write(f"• Spese annue: €{spese_annue_fire:,.0f}")
+            st.write(f"• Tasso prelievo: {tasso_prelievo_fire}%")
+            st.write(f"• CAGR accumulo: {cagr_accumulo}%")
+            st.write(f"• CAGR prelievi: {cagr_prelievi}%")
+            
+            st.write("")
+            st.write("**Parametri Leva:**")
+            st.write(f"• Euribor 3M: {euribor_3m}% (salvato: {euribor_3m/100:.4f})")
+            st.write(f"• Spread Lombard: {spread_lombard}% (salvato: {spread_lombard/100:.4f})")
+            st.write(f"• Costo totale leva: {tasso_totale_leva:.2f}%")
 
     st.success("✓ Tutte le configurazioni vengono salvate automaticamente su Supabase!")
 
