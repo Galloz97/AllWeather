@@ -1155,7 +1155,7 @@ def page_analisi_portafoglio():
                         p90_final = np.percentile(final_values, 90)
                         st.metric("🚀 90° Percentile", format_currency(p90_final))
                     
-                    st.divider()
+                                        st.divider()
                     
                     # Rendimenti totali e CAGR
                     st.subheader("📈 Analisi Rendimenti")
@@ -1164,37 +1164,107 @@ def page_analisi_portafoglio():
                     
                     col1, col2, col3 = st.columns(3)
                     
-                    def calculate_cagr(final_val, initial_val, years):
+                    # CAGR calcolato solo sul capitale iniziale (più realistico)
+                    def calculate_cagr_on_initial(final_val, initial_val, contributions, years):
+                        """
+                        CAGR semplificato: considera solo capitale iniziale
+                        Questo dà un'idea del rendimento annuale composto
+                        """
                         if initial_val > 0:
-                            return ((final_val / initial_val) ** (1 / years) - 1) * 100
+                            # Sottrai i versamenti dal valore finale per vedere solo la crescita
+                            growth = final_val - contributions
+                            return ((growth / initial_val) ** (1 / years) - 1) * 100
+                        return 0
+                    
+                    # Rendimento totale (quanto hai guadagnato rispetto a quanto investito)
+                    def calculate_total_return(final_val, total_invested):
+                        if total_invested > 0:
+                            return ((final_val - total_invested) / total_invested * 100)
                         return 0
                     
                     with col1:
-                        median_total_return = ((median_final - total_invested) / total_invested * 100)
-                        cagr_50 = calculate_cagr(median_final, total_invested, n_years)
+                        # Rendimento totale mediano
+                        median_total_return = calculate_total_return(median_final, total_invested)
+                        # Guadagno assoluto
+                        median_gain = median_final - total_invested
+                        
                         st.metric(
-                            "Rendimento Mediano",
-                            f"{median_total_return:.1f}%",
-                            f"CAGR: {cagr_50:.2f}%/anno"
+                            "💰 Scenario Mediano",
+                            format_currency(median_final),
+                            f"Guadagno: {format_currency(median_gain)}"
                         )
+                        st.caption(f"Rendimento totale: {median_total_return:.1f}%")
                     
                     with col2:
-                        p75_total_return = ((p75_final - total_invested) / total_invested * 100)
-                        cagr_75 = calculate_cagr(p75_final, total_invested, n_years)
+                        p75_total_return = calculate_total_return(p75_final, total_invested)
+                        p75_gain = p75_final - total_invested
+                        
                         st.metric(
-                            "Rendimento 75°",
-                            f"{p75_total_return:.1f}%",
-                            f"CAGR: {cagr_75:.2f}%/anno"
+                            "📈 Scenario 75°",
+                            format_currency(p75_final),
+                            f"Guadagno: {format_currency(p75_gain)}"
                         )
+                        st.caption(f"Rendimento totale: {p75_total_return:.1f}%")
                     
                     with col3:
-                        p90_total_return = ((p90_final - total_invested) / total_invested * 100)
-                        cagr_90 = calculate_cagr(p90_final, total_invested, n_years)
+                        p90_total_return = calculate_total_return(p90_final, total_invested)
+                        p90_gain = p90_final - total_invested
+                        
                         st.metric(
-                            "Rendimento 90°",
-                            f"{p90_total_return:.1f}%",
-                            f"CAGR: {cagr_90:.2f}%/anno"
+                            "🚀 Scenario 90°",
+                            format_currency(p90_final),
+                            f"Guadagno: {format_currency(p90_gain)}"
                         )
+                        st.caption(f"Rendimento totale: {p90_total_return:.1f}%")
+                    
+                    st.divider()
+                    
+                    # CAGR - Tasso di crescita annuale composto
+                    st.subheader("📊 CAGR (Compound Annual Growth Rate)")
+                    st.caption("Rendimento annuale medio sul capitale iniziale (esclusi versamenti)")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        cagr_50 = calculate_cagr_on_initial(median_final, initial_value, total_contributed, n_years)
+                        st.metric("CAGR Mediano", f"{cagr_50:.2f}% /anno")
+                    
+                    with col2:
+                        cagr_75 = calculate_cagr_on_initial(p75_final, initial_value, total_contributed, n_years)
+                        st.metric("CAGR 75°", f"{cagr_75:.2f}% /anno")
+                    
+                    with col3:
+                        cagr_90 = calculate_cagr_on_initial(p90_final, initial_value, total_contributed, n_years)
+                        st.metric("CAGR 90°", f"{cagr_90:.2f}% /anno")
+                    
+                    # Breakdown
+                    st.divider()
+                    st.subheader("💡 Breakdown Scenario Mediano")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("💵 Capitale Iniziale", format_currency(initial_value))
+                    with col2:
+                        st.metric("➕ Versamenti Totali", format_currency(total_contributed))
+                    with col3:
+                        median_investment_gain = median_final - total_invested
+                        st.metric("💹 Guadagno da Investimenti", format_currency(median_investment_gain))
+                    
+                    # Grafico a torta breakdown
+                    breakdown_fig = go.Figure(data=[go.Pie(
+                        labels=['Capitale Iniziale', 'Versamenti PAC', 'Guadagno Investimenti'],
+                        values=[initial_value, total_contributed, max(0, median_final - total_invested)],
+                        marker=dict(colors=['#636EFA', '#EF553B', '#00CC96']),
+                        hovertemplate='%{label}<br>€%{value:,.0f}<br>%{percent}<extra></extra>'
+                    )])
+                    
+                    breakdown_fig.update_layout(
+                        title="Composizione Patrimonio Finale (Scenario Mediano)",
+                        height=400
+                    )
+                    
+                    st.plotly_chart(breakdown_fig, use_container_width=True)
                     
                 else:
                     st.error("Errore: simulazione non ha prodotto risultati")
