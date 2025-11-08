@@ -1798,48 +1798,55 @@ def page_configurazione():
     
     # NUOVO: Parametri Leva Finanziaria
     st.subheader("📈 Parametri Leva Finanziaria")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        # Leggi euribor (potrebbe essere salvato come decimale o percentuale)
+        # Leggi euribor
         euribor_saved = supabase.get_config(user_id, "euribor_3m", "0.035")
-        euribor_val = safe_float(euribor_saved, "0.035", 0.0, 0.2)
+        euribor_val = safe_float(euribor_saved, "0.035", 0.0, 10.0)  # Max 10.0 per sicurezza
         
-        # Auto-detect: se > 1, è stato salvato come %
+        # Auto-detect: se > 1, è stato salvato come % invece che decimale
         if euribor_val > 1.0:
             euribor_val = euribor_val / 100
+        
+        # IMPORTANTE: Limita il valore a range ragionevole (0-10%)
+        euribor_val = max(0.0, min(0.10, euribor_val))  # Max 10% = 0.10
         
         euribor_3m = st.number_input(
             "Euribor 3M (%)",
             min_value=0.0,
             max_value=10.0,
-            value=euribor_val * 100,  # Mostra come %
+            value=euribor_val * 100,  # Converti a % per display
             step=0.1,
-            help="Tasso Euribor 3 mesi (es. 3.5% = tasso interbancario)"
+            help="Tasso Euribor 3 mesi (es. 3.5%)"
         )
-    
+
     with col2:
         # Leggi spread
         spread_saved = supabase.get_config(user_id, "spread_credit_lombard", "0.02")
-        spread_val = safe_float(spread_saved, "0.02", 0.0, 0.1)
+        spread_val = safe_float(spread_saved, "0.02", 0.0, 10.0)
         
         # Auto-detect
         if spread_val > 1.0:
             spread_val = spread_val / 100
         
+        # IMPORTANTE: Limita il valore
+        spread_val = max(0.0, min(0.10, spread_val))  # Max 10% = 0.10
+        
         spread_lombard = st.number_input(
             "Spread Credito Lombard (%)",
             min_value=0.0,
             max_value=10.0,
-            value=spread_val * 100,  # Mostra come %
+            value=spread_val * 100,  # Converti a % per display
             step=0.1,
-            help="Spread sul credito lombard (es. 2.0% = costo aggiuntivo della banca)"
+            help="Spread sul credito lombard (es. 2.0%)"
         )
-    
+
     # Info tasso totale
     tasso_totale_leva = euribor_3m + spread_lombard
-    st.info(f"💰 **Costo totale leva finanziaria:** {tasso_totale_leva:.2f}% p.a. (Euribor {euribor_3m:.2f}% + Spread {spread_lombard:.2f}%)")
+    st.info(f"💰 **Costo totale leva:** {tasso_totale_leva:.2f}% p.a. (Euribor {euribor_3m:.2f}% + Spread {spread_lombard:.2f}%)")
+
     
     st.divider()
     
