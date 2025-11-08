@@ -725,6 +725,13 @@ def page_analisi_portafoglio():
         st.info("📭 Nessun dato portafoglio da analizzare")
         return
     
+    # IMPORTANTE: Escludi LIQUIDITA dalle analisi (non ha dati storici)
+    df_analysis = df[df['Ticker'] != 'LIQUIDITA'].copy()
+    
+    if df_analysis.empty:
+        st.info("📭 Nessun asset da analizzare (solo liquidità disponibile)")
+        return
+    
     # Metriche Principali
     st.subheader("📊 Metriche Portafoglio")
     
@@ -733,20 +740,51 @@ def page_analisi_portafoglio():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        vol = np.mean([calculate_volatility(t) for t in df['Ticker']])
-        st.metric("Volatilità Annualizzata", f"{vol*100:.2f}%")
+        # Calcola volatilità solo per asset reali (non liquidità)
+        volatilities = []
+        for ticker in df_analysis['Ticker']:
+            vol = calculate_volatility(ticker)
+            if vol and vol > 0:
+                volatilities.append(vol)
+        
+        if volatilities:
+            avg_vol = np.mean(volatilities)
+            st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
+        else:
+            st.metric("Volatilità Annualizzata", "N/A")
     
     with col2:
-        sharpe = calculate_sharpe_ratio(df, risk_free_rate)
-        st.metric("Sharpe Ratio", f"{sharpe:.3f}")
+        if volatilities:
+            sharpe = calculate_sharpe_ratio(df_analysis, risk_free_rate)
+            st.metric("Sharpe Ratio", f"{sharpe:.3f}")
+        else:
+            st.metric("Sharpe Ratio", "N/A")
     
     with col3:
-        max_dd = np.mean([calculate_max_drawdown(t) for t in df['Ticker']])
-        st.metric("Max Drawdown", f"{max_dd*100:.2f}%")
+        max_dds = []
+        for ticker in df_analysis['Ticker']:
+            dd = calculate_max_drawdown(ticker)
+            if dd and not np.isnan(dd):
+                max_dds.append(dd)
+        
+        if max_dds:
+            avg_dd = np.mean(max_dds)
+            st.metric("Max Drawdown", f"{avg_dd*100:.2f}%")
+        else:
+            st.metric("Max Drawdown", "N/A")
     
     with col4:
-        ulcer = np.mean([calculate_ulcer_index(t) for t in df['Ticker']])
-        st.metric("Ulcer Index", f"{ulcer:.2f}%")
+        ulcers = []
+        for ticker in df_analysis['Ticker']:
+            ulc = calculate_ulcer_index(ticker)
+            if ulc and not np.isnan(ulc):
+                ulcers.append(ulc)
+        
+        if ulcers:
+            avg_ulcer = np.mean(ulcers)
+            st.metric("Ulcer Index", f"{avg_ulcer:.2f}%")
+        else:
+            st.metric("Ulcer Index", "N/A")
     
     st.divider()
     
@@ -757,20 +795,24 @@ def page_analisi_portafoglio():
     
     with col1:
         st.write("**Risk Parity vs Allocazione Attuale**")
-        risk_parity = calculate_risk_parity_weights(df)
+        risk_parity = calculate_risk_parity_weights(df_analysis)
         
         if not risk_parity.empty:
-            comparison_df = df[['Ticker', 'Peso %']].merge(risk_parity, on='Ticker', how='left')
+            comparison_df = df_analysis[['Ticker', 'Peso %']].merge(risk_parity, on='Ticker', how='left')
             comparison_df['Risk Parity %'] = comparison_df['Risk Parity %'].fillna(0)
             
             st.dataframe(comparison_df, use_container_width=True)
+        else:
+            st.info("Dati insufficienti per calcolare Risk Parity")
     
     with col2:
         st.write("**Relaxed Risk Parity (5% - 40%)**")
-        relaxed_rp = calculate_relaxed_risk_parity(df, min_weight=0.05, max_weight=0.40)
+        relaxed_rp = calculate_relaxed_risk_parity(df_analysis, min_weight=0.05, max_weight=0.40)
         
         if not relaxed_rp.empty:
             st.dataframe(relaxed_rp, use_container_width=True)
+        else:
+            st.info("Dati insufficienti per calcolare Relaxed Risk Parity")
     
     st.divider()
     
@@ -779,43 +821,49 @@ def page_analisi_portafoglio():
     
     if st.button("Esegui Simulazione"):
         with st.spinner("Esecuzione simulazione..."):
-            simulations = monte_carlo_simulation(df, n_simulations=1000, days=252)
+            try:
+                simulations = monte_carlo_simulation(df_analysis, n_simulations=1000, days=252)
+                
+                percentili = np.percentile(simulations, [10, 25, 50, 75, 90], axis=0)
+                
+                fig = go.Figure()
+                
+                for i, (p, label) in enumerate([(10, '10°'), (25, '25°'), (50, '50°'), (75, '75°'), (90, '90°')]):
+                    fig.add_trace(go.Scatter(
+                        y=percentili[i],
+                        name=f'Percentile {label}',
+                        mode='lines',
+                        hovertemplate='Giorno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
+                    ))
+                
+                fig.update_layout(
+                    title="Simulazione Monte Carlo - Valore Portafoglio (12 mesi)",
+                    xaxis_title="Giorni",
+                    yaxis_title="Valore Portafoglio (€)",
+                    hovermode='x unified',
+                    height=500
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Statistiche finali
+                final_values = simulations[:, -1]
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Valore Iniziale", format_currency(metrics['valore_totale']))
+                with col2:
+                    st.metric("Mediana (50°)", format_currency(np.median(final_values)))
+                with col3:
+                    st.metric("10° Percentile", format_currency(np.percentile(final_values, 10)))
+                with col4:
+                    st.metric("90° Percentile", format_currency(np.percentile(final_values, 90)))
             
-            percentili = np.percentile(simulations, [10, 25, 50, 75, 90], axis=0)
-            
-            fig = go.Figure()
-            
-            for i, (p, label) in enumerate([(10, '10°'), (25, '25°'), (50, '50°'), (75, '75°'), (90, '90°')]):
-                fig.add_trace(go.Scatter(
-                    y=percentili[i],
-                    name=f'Percentile {label}',
-                    mode='lines',
-                    hovertemplate='Giorno: %{x}<br>Valore: €%{y:,.2f}<extra></extra>'
-                ))
-            
-            fig.update_layout(
-                title="Simulazione Monte Carlo - Valore Portafoglio (12 mesi)",
-                xaxis_title="Giorni",
-                yaxis_title="Valore Portafoglio (€)",
-                hovermode='x unified',
-                height=500
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Statistiche finali
-            final_values = simulations[:, -1]
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Valore Iniziale", format_currency(metrics['valore_totale']))
-            with col2:
-                st.metric("Mediana (50°)", format_currency(np.median(final_values)))
-            with col3:
-                st.metric("10° Percentile", format_currency(np.percentile(final_values, 10)))
-            with col4:
-                st.metric("90° Percentile", format_currency(np.percentile(final_values, 90)))
+            except Exception as e:
+                st.error(f"Errore durante la simulazione: {e}")
+                st.info("Verifica che tutti i ticker abbiano dati storici disponibili su Yahoo Finance")
+
 
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
