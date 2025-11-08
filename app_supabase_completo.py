@@ -247,23 +247,45 @@ def calculate_volatility(ticker):
     returns = data['Close'].pct_change().dropna()
     return returns.std() * np.sqrt(252)
 
-def calculate_sharpe_ratio(df, risk_free_rate):
+def calculate_sharpe_ratio(df, risk_free_rate=0.025):
     """Calcola Sharpe Ratio del portafoglio"""
-    volatilities = []
-    for _, row in df.iterrows():
-        vol = calculate_volatility(row['Ticker'])
-        volatilities.append(vol)
+    try:
+        portfolio_return = df['P&L %'].mean() / 100  # Media rendimenti
+        
+        # Calcola volatilità portfolio
+        volatilities = []
+        weights = df['Peso %'] / 100
+        
+        for ticker in df['Ticker']:
+            try:
+                vol = calculate_volatility(ticker)
+                if vol is not None:
+                    vol_float = float(vol)
+                    if not np.isnan(vol_float) and vol_float > 0:
+                        volatilities.append(vol_float)
+                    else:
+                        volatilities.append(0)
+                else:
+                    volatilities.append(0)
+            except Exception as e:
+                print(f"Errore volatilità Sharpe per {ticker}: {e}")
+                volatilities.append(0)
+        
+        if not volatilities or all(v == 0 for v in volatilities):
+            return 0
+        
+        portfolio_vol = np.average(volatilities, weights=weights)
+        
+        if portfolio_vol > 0:
+            sharpe = (portfolio_return - risk_free_rate) / portfolio_vol
+            return float(sharpe)
+        
+        return 0
     
-    if not volatilities or sum(volatilities) == 0:
-        return 0.0
-    
-    portfolio_vol = np.mean(volatilities)
-    avg_return = np.mean(df['P&L %']) / 100
-    
-    if portfolio_vol == 0:
-        return 0.0
-    
-    return (avg_return - risk_free_rate) / portfolio_vol
+    except Exception as e:
+        print(f"Errore calcolo Sharpe Ratio: {e}")
+        return 0
+
 
 def calculate_max_drawdown(ticker):
     """Calcola maximum drawdown di un ticker"""
@@ -294,63 +316,131 @@ def calculate_ulcer_index(ticker):
     return float(ulcer_index)
 
 def calculate_risk_parity_weights(df):
-    """Calcola pesi Risk Parity (inversamente proporzionali a volatilità)"""
-    inv_vols = []
-    tickers = []
+    """Calcola pesi Risk Parity basati sulla volatilità"""
+    try:
+        weights = []
+        
+        for _, row in df.iterrows():
+            ticker = row['Ticker']
+            try:
+                vol = calculate_volatility(ticker)
+                
+                # Converti a float e verifica validità
+                if vol is not None:
+                    vol_float = float(vol)
+                    if not np.isnan(vol_float) and vol_float > 0:
+                        weights.append({
+                            'Ticker': ticker,
+                            'Volatilità': vol_float,
+                            'Inv_Vol': 1 / vol_float
+                        })
+            except Exception as e:
+                print(f"Errore volatilità per {ticker}: {e}")
+                continue
+        
+        if not weights:
+            return pd.DataFrame()
+        
+        weights_df = pd.DataFrame(weights)
+        total_inv_vol = weights_df['Inv_Vol'].sum()
+        weights_df['Risk Parity %'] = (weights_df['Inv_Vol'] / total_inv_vol * 100)
+        
+        return weights_df[['Ticker', 'Risk Parity %']]
     
-    for _, row in df.iterrows():
-        vol = calculate_volatility(row['Ticker'])
-        if vol > 0:
-            inv_vols.append(1 / vol)
-            tickers.append(row['Ticker'])
-    
-    if not inv_vols:
+    except Exception as e:
+        print(f"Errore calcolo Risk Parity: {e}")
         return pd.DataFrame()
-    
-    total_inv_vols = sum(inv_vols)
-    weights = [iv / total_inv_vols * 100 for iv in inv_vols]
-    
-    return pd.DataFrame({'Ticker': tickers, 'Risk Parity %': weights})
+
 
 def calculate_relaxed_risk_parity(df, min_weight=0.05, max_weight=0.40):
-    """Calcola Relaxed Risk Parity con vincoli min/max"""
-    rp = calculate_risk_parity_weights(df)
+    """Calcola Risk Parity con vincoli min/max"""
+    try:
+        risk_parity = calculate_risk_parity_weights(df)
+        
+        if risk_parity.empty:
+            return pd.DataFrame()
+        
+        # Applica vincoli
+        relaxed = risk_parity.copy()
+        relaxed['Risk Parity %'] = relaxed['Risk Parity %'] / 100  # Converti a decimale
+        
+        # Clipping
+        relaxed['Relaxed %'] = relaxed['Risk Parity %'].clip(min_weight, max_weight)
+        
+        # Rinormalizza
+        total_weight = relaxed['Relaxed %'].sum()
+        if total_weight > 0:
+            relaxed['Relaxed %'] = (relaxed['Relaxed %'] / total_weight * 100)
+        else:
+            relaxed['Relaxed %'] = 0
+        
+        return relaxed[['Ticker', 'Relaxed %']]
     
-    if rp.empty:
+    except Exception as e:
+        print(f"Errore calcolo Relaxed Risk Parity: {e}")
         return pd.DataFrame()
-    
-    rp['Peso Clip %'] = rp['Risk Parity %'].clip(lower=min_weight*100, upper=max_weight*100)
-    total = rp['Peso Clip %'].sum()
-    rp['Relaxed Risk Parity %'] = (rp['Peso Clip %'] / total * 100)
-    
-    return rp[['Ticker', 'Relaxed Risk Parity %']]
+
 
 def monte_carlo_simulation(df, n_simulations=1000, days=252):
-    """Simulazione Monte Carlo del portafoglio per 12 mesi"""
-    returns_list = []
-    volatilities_list = []
-    
-    for _, row in df.iterrows():
-        data = get_stock_data(row['Ticker'])
-        if data is None or len(data) < 2:
-            continue
+    """Simulazione Monte Carlo del portafoglio"""
+    try:
+        # Prepara dati
+        tickers = df['Ticker'].tolist()
+        weights = (df['Peso %'] / 100).tolist()
+        initial_value = df['Valore Totale'].sum()
         
-        daily_returns = data['Close'].pct_change().dropna()
-        returns_list.append(daily_returns.mean() * 252)
-        volatilities_list.append(daily_returns.std() * np.sqrt(252))
+        # Calcola rendimenti e volatilità storici
+        returns = []
+        vols = []
+        
+        for ticker in tickers:
+            try:
+                data = yf.download(ticker, period="1y", progress=False)
+                if not data.empty and 'Close' in data.columns:
+                    ret = data['Close'].pct_change().mean()
+                    vol = calculate_volatility(ticker)
+                    
+                    if vol is not None:
+                        vol_float = float(vol)
+                        if not np.isnan(vol_float):
+                            returns.append(float(ret) if not np.isnan(ret) else 0)
+                            vols.append(vol_float)
+                        else:
+                            returns.append(0)
+                            vols.append(0.15)  # Default volatility
+                    else:
+                        returns.append(0)
+                        vols.append(0.15)
+                else:
+                    returns.append(0)
+                    vols.append(0.15)
+            except Exception as e:
+                print(f"Errore Monte Carlo per {ticker}: {e}")
+                returns.append(0)
+                vols.append(0.15)
+        
+        # Simulazioni
+        simulations = np.zeros((n_simulations, days))
+        
+        for i in range(n_simulations):
+            portfolio_value = initial_value
+            
+            for day in range(days):
+                daily_return = 0
+                for j, (ret, vol, weight) in enumerate(zip(returns, vols, weights)):
+                    # Random walk
+                    random_return = np.random.normal(ret / 252, vol / np.sqrt(252))
+                    daily_return += random_return * weight
+                
+                portfolio_value *= (1 + daily_return)
+                simulations[i, day] = portfolio_value
+        
+        return simulations
     
-    avg_return = np.mean(returns_list) if returns_list else 0.07
-    avg_volatility = np.mean(volatilities_list) if volatilities_list else 0.15
-    
-    portfolio_value = df['Valore Totale'].sum()
-    simulations = []
-    
-    for _ in range(n_simulations):
-        daily_returns = np.random.normal(avg_return / 252, avg_volatility / np.sqrt(252), days)
-        values = portfolio_value * np.cumprod(1 + daily_returns)
-        simulations.append(values)
-    
-    return np.array(simulations)
+    except Exception as e:
+        print(f"Errore simulazione Monte Carlo: {e}")
+        return np.array([[]])
+
 
 # ==================== PAGINA MONITORAGGIO ====================
 
