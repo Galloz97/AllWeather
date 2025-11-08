@@ -1565,7 +1565,7 @@ def page_import_csv():
 # ==================== PAGINA CONFIGURAZIONE ====================
 
 def page_configurazione():
-    """Pagina Configurazione con validazione"""
+    """Pagina Configurazione con gestione coerente percentuali"""
     st.title("⚙️ Configurazione")
     
     # Helper per validare valori
@@ -1599,7 +1599,8 @@ def page_configurazione():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        tasso_risk_free_val = safe_float(
+        # Leggi in formato decimale, mostra come %
+        tasso_risk_free_decimal = safe_float(
             supabase.get_config(user_id, "tasso_risk_free", "0.025"),
             "0.025", 0.0, 0.2
         )
@@ -1607,13 +1608,13 @@ def page_configurazione():
             "Tasso Risk-Free (%)",
             min_value=0.0,
             max_value=20.0,
-            value=tasso_risk_free_val * 100,
+            value=tasso_risk_free_decimal * 100,  # Converti a %
             step=0.1,
-            help="Tasso di interesse senza rischio"
+            help="Tasso di interesse senza rischio (es. 2.5%)"
         )
     
     with col2:
-        inflazione_val = safe_float(
+        inflazione_decimal = safe_float(
             supabase.get_config(user_id, "inflazione", "0.02"),
             "0.02", 0.0, 0.2
         )
@@ -1621,9 +1622,9 @@ def page_configurazione():
             "Inflazione (%)",
             min_value=0.0,
             max_value=20.0,
-            value=inflazione_val * 100,
+            value=inflazione_decimal * 100,  # Converti a %
             step=0.1,
-            help="Tasso inflazione annuale"
+            help="Tasso inflazione annuale (es. 2.0%)"
         )
     
     with col3:
@@ -1636,8 +1637,7 @@ def page_configurazione():
             min_value=1,
             max_value=50,
             value=orizzonte_val,
-            step=1,
-            help="Anni di investimento"
+            step=1
         )
     
     # PAC
@@ -1655,8 +1655,7 @@ def page_configurazione():
             min_value=0,
             max_value=50000,
             value=int(versamento_val),
-            step=100,
-            help="Versamento mensile PAC"
+            step=100
         )
     
     with col2:
@@ -1669,8 +1668,7 @@ def page_configurazione():
             min_value=0,
             max_value=1000000,
             value=int(versamento_annuo_val),
-            step=1000,
-            help="Versamento annuale (bonus, 13a)"
+            step=1000
         )
     
     # FIRE
@@ -1687,8 +1685,7 @@ def page_configurazione():
             "Età attuale",
             min_value=18,
             max_value=80,
-            value=eta_val,
-            help="La tua età attuale"
+            value=eta_val
         )
     
     with col2:
@@ -1701,11 +1698,11 @@ def page_configurazione():
             min_value=0,
             max_value=500000,
             value=int(spese_val),
-            step=1000,
-            help="Quanto vuoi spendere all'anno in FIRE"
+            step=1000
         )
     
     with col3:
+        # IMPORTANTE: Salva come %, leggi come %
         tasso_prelievo_val = safe_float(
             supabase.get_config(user_id, "tasso_prelievo_fire", "4.0"),
             "4.0", 1.0, 10.0
@@ -1714,7 +1711,7 @@ def page_configurazione():
             "Tasso prelievo FIRE (%)",
             min_value=1.0,
             max_value=10.0,
-            value=tasso_prelievo_val,
+            value=tasso_prelievo_val,  # GIÀ in %
             step=0.5,
             help="Regola del 4% standard"
         )
@@ -1722,6 +1719,7 @@ def page_configurazione():
     col1, col2 = st.columns(2)
     
     with col1:
+        # IMPORTANTE: Salva come %, leggi come %
         cagr_acc_val = safe_float(
             supabase.get_config(user_id, "cagr_accumulo", "4.0"),
             "4.0", 0.0, 20.0
@@ -1730,9 +1728,9 @@ def page_configurazione():
             "CAGR Accumulo (%)",
             min_value=0.0,
             max_value=20.0,
-            value=cagr_acc_val,
+            value=cagr_acc_val,  # GIÀ in %
             step=0.1,
-            help="Rendimento atteso in fase accumulo"
+            help="Rendimento atteso in fase accumulo (es. 4.0%)"
         )
     
     with col2:
@@ -1744,28 +1742,40 @@ def page_configurazione():
             "CAGR Prelievi (%)",
             min_value=0.0,
             max_value=20.0,
-            value=cagr_prel_val,
+            value=cagr_prel_val,  # GIÀ in %
             step=0.1,
-            help="Rendimento atteso in fase prelievi"
+            help="Rendimento atteso in fase prelievi (es. 3.0%)"
         )
+    
+    st.divider()
     
     # Salva
     if st.button("💾 Salva Configurazione", type="primary"):
+        # Salva risk-free e inflazione come DECIMALI (0.025 = 2.5%)
         supabase.set_config(user_id, "tasso_risk_free", str(tasso_risk_free / 100))
         supabase.set_config(user_id, "inflazione", str(inflazione / 100))
+        
+        # Salva altri valori
         supabase.set_config(user_id, "orizzonte_temporale", str(orizzonte_temporale))
         supabase.set_config(user_id, "versamento_mensile", str(versamento_mensile))
         supabase.set_config(user_id, "versamento_annuale", str(versamento_annuale))
         supabase.set_config(user_id, "eta_attuale", str(eta_attuale))
         supabase.set_config(user_id, "spese_annue_fire", str(spese_annue_fire))
+        
+        # Salva CAGR e tasso prelievo come PERCENTUALI (4.0 = 4%)
         supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo_fire))
         supabase.set_config(user_id, "cagr_accumulo", str(cagr_accumulo))
         supabase.set_config(user_id, "cagr_prelievi", str(cagr_prelievi))
         
         st.success("✅ Configurazione salvata!")
-
-
-
+        
+        # Mostra riepilogo
+        with st.expander("📋 Riepilogo valori salvati"):
+            st.write(f"• Tasso Risk-Free: {tasso_risk_free}% (salvato: {tasso_risk_free/100:.4f})")
+            st.write(f"• Inflazione: {inflazione}% (salvato: {inflazione/100:.4f})")
+            st.write(f"• CAGR Accumulo: {cagr_accumulo}% (salvato: {cagr_accumulo})")
+            st.write(f"• CAGR Prelievi: {cagr_prelievi}% (salvato: {cagr_prelievi})")
+            st.write(f"• Tasso Prelievo: {tasso_prelievo_fire}% (salvato: {tasso_prelievo_fire})")
 
     st.success("✓ Tutte le configurazioni vengono salvate automaticamente su Supabase!")
 
