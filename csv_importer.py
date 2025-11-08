@@ -65,9 +65,8 @@ def get_ticker_mapping(ticker_bit):
     """Ritorna il ticker Yahoo Finance dal ticker BIT"""
     return TICKER_MAPPING.get(ticker_bit, None)
 
-def process_csv(csv_file_path, user_id: str, supabase_client: Client):
-    """Processa il CSV e importa le transazioni su Supabase, mostra errori dettagliati"""
-    import traceback
+def process_csv(csv_file_path, user_id: str, supabase_client):
+    """Processa il CSV e importa le transazioni su Supabase"""
     df = pd.read_csv(csv_file_path, sep=",")
     df.columns = [col.strip().lower() for col in df.columns]
     column_map = {
@@ -90,7 +89,10 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             return None
         if isinstance(val, (float, int)):
             return float(val)
-        val = str(val).replace("€", "").replace(" ", "").replace(".", "").replace(",", ".").strip()
+        val = str(val).replace("€", "").replace(" ", "").strip()
+        # Rimuovi separatori migliaia (punto) e sostituisci virgola decimale con punto
+        val = val.replace(".", "")
+        val = val.replace(",", ".")
         try:
             return float(val)
         except Exception:
@@ -99,7 +101,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     def parse_date(x):
         try:
             return pd.to_datetime(str(x), format="%d/%m/%Y").strftime("%Y-%m-%d")
-        except Exception as err:
+        except:
             return None
 
     for idx, row in df.iterrows():
@@ -110,9 +112,8 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
         pmc = clean(row.get("prezzo_unitario", None))
         commissioni = clean(row.get("commissioni", None)) or 0
         totale = clean(row.get("totale", None))
-        note = ""
 
-        # LIQUIDITÀ: Bonifico / Prelievo / Imposta
+        # LIQUIDITÀ
         if tipo.lower() in ["bonifico", "deposito"]:
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Deposit"
@@ -120,6 +121,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             prezzo_finale = 1.0
             importo_finale = quantita_finale
             note = "Deposito Liquidità"
+            
         elif tipo.lower() == "prelievo":
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Withdrawal"
@@ -127,6 +129,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             prezzo_finale = 1.0
             importo_finale = quantita_finale
             note = "Prelievo Liquidità"
+            
         elif tipo.lower() == "imposta":
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Tax"
@@ -134,18 +137,21 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             prezzo_finale = 1.0
             importo_finale = quantita_finale
             note = "Imposta/Tassa"
+            
         elif tipo in ["Buy", "Sell"]:
             if isinstance(ticker, str) and ticker.startswith("BIT:"):
                 ticker_finale = ticker.replace("BIT:", "") + ".MI"
-            elif ticker and not ticker.upper() in ["EURO", ""]:
+            elif ticker and ticker.upper() not in ["EURO", "NAN", ""]:
                 ticker_finale = ticker
             else:
                 non_mappate += 1
                 continue
+                
             tipo_finale = tipo
             if quantita is None or pmc is None:
                 non_mappate += 1
                 continue
+                
             quantita_finale = quantita if tipo == "Buy" else -abs(quantita)
             prezzo_finale = pmc
             importo_finale = quantita * pmc
@@ -154,35 +160,38 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             non_mappate += 1
             continue
 
-        # Dati da inserire
-        insert_data = {
-            "user_id": user_id,
-            "data": data,
-            "ticker": ticker_finale,
-            "tipo": tipo_finale,
-            "quantita": quantita_finale,
-            "prezzo_unitario": prezzo_finale,
-            "importo": importo_finale,
-            "commissioni": commissioni,
-            "note": note,
-            "created_at": datetime.now().isoformat()
-        }
+        # Skip se data non valida
+        if data is None:
+            errori.append(f"Riga {idx}: Data non valida")
+            continue
 
         try:
-            response = supabase_client.table("transazioni").insert(insert_data).execute()
+            response = supabase_client.table("transazioni").insert({
+                "user_id": user_id,
+                "data": data,
+                "ticker": ticker_finale,
+                "tipo": tipo_finale,
+                "quantita": float(quantita_finale),
+                "prezzo_unitario": float(prezzo_finale),
+                "importo": float(importo_finale),
+                "commissioni": float(commissioni),
+                "note": note,
+                "created_at": datetime.now().isoformat()
+            }).execute()
+            
             transazioni_importate += 1
-            print(f"✓ Riga {idx}: {tipo_finale} | {ticker_finale} | {data}")
+            
         except Exception as e:
-            error_msg = f"Riga {idx}: ERRORE - {str(e)}\nDati: {insert_data}"
-            errori.append(error_msg)
+            errori.append(f"Riga {idx}: {str(e)}")
             if len(errori) <= 5:
-                print(error_msg)
+                print(f"❌ Riga {idx}: {str(e)}")
 
     return {
         'importate': transazioni_importate,
         'errori': len(errori),
         'non_mappate': non_mappate
     }
+
 
 # ==================== STREAMLIT UI ====================
 
