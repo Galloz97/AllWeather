@@ -740,17 +740,17 @@ def page_analisi_portafoglio():
     col1, col2, col3, col4 = st.columns(4)
     
    with col1:
-        # Calcola volatilità solo per asset reali (non liquidità)
-        volatilities = []
-        for ticker in df_analysis['Ticker']:
-            try:
-                vol = calculate_volatility(ticker)
-                # Converti a float e verifica che sia valido
-                if vol is not None and not np.isnan(float(vol)) and float(vol) > 0:
-                    volatilities.append(float(vol))
-            except Exception as e:
-                print(f"Errore calcolo volatilità per {ticker}: {e}")
-                continue
+       # Calcola volatilità solo per asset reali (non liquidità)
+       volatilities = []
+       for ticker in df_analysis['Ticker']:
+           try:
+               vol = calculate_volatility(ticker)
+               # Converti a float e verifica che sia valido
+               if vol is not None and not np.isnan(float(vol)) and float(vol) > 0:
+                   volatilities.append(float(vol))
+           except Exception as e:
+               print(f"Errore calcolo volatilità per {ticker}: {e}")
+               continue
     
     if volatilities:
         avg_vol = np.mean(volatilities)
