@@ -989,7 +989,7 @@ def page_import_csv():
                 f.write(uploaded_file.getbuffer())
             
             with st.spinner("Importazione..."):
-                result = process_csv(temp_path, user_id, supabase)
+                result = process_csv(temp_path, user_id, supabase.client)
             
             col1, col2, col3 = st.columns(3)
             col1.metric("✓ Importate", result['importate'])
