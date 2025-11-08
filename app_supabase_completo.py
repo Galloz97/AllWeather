@@ -52,7 +52,7 @@ def get_stock_data(ticker, period="5y"):
         return None
 
 @st.cache_data(ttl=3600)  # Cache per 1 ora
-def get_stock_data_cached(ticker, period="1y"):
+def get_stock_data_cached(ticker, period="5y"):
     """Scarica dati storici con cache"""
     try:
         data = yf.download(ticker, period=period, progress=False, timeout=10)
