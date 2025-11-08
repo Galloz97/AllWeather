@@ -12,15 +12,28 @@ import streamlit as st
 # Mapping ticker BIT: → Yahoo Finance
 TICKER_MAPPING = {
     "BIT:CSSPX": "CSSPX.MI",      # iShares Core S&P 500 UCITS ETF USD Acc
-    "BIT:CMOD": "CMOD.MI",        # iShares Core MSCI World UCITS ETF
-    "BIT:ITPS": "ITPS.MI",        # iShares MSCI Japan UCITS ETF
-    "BIT:SMEA": "SMEA.MI",        # Saifirst EMP Asia Equity Fund
-    "BIT:TPRO": "TPRO.MI",        # Thematic ETF Portfolio
+    "BIT:CMOD": "CMOD.MI",        # Invesco Bloomberg Commodity UCITS ETF
+    "BIT:ITPS": "ITPS.MI",        # iShares $ TIPS UCITS ETF USD Acc
+    "BIT:SMEA": "SMEA.MI",        # iShares Core MSCI Europe UCITS ETF
+    "BIT:SEMA": "SEMA.MI",        # iShares MSCI EM UCITS ETF USD Acc
+    "BIT:TPRO": "TPRO.MI",        # Technoprobe Spa
     "BIT:CSEMAS": "CSEMAS.MI",    # iShares MSCI EM Asia UCITS ETF
     "BIT:SGLD-ETFP": "SGLD.MI",   # iShares Physical Gold ETC
-    "BIT:CSBGE7": "CSBGE7.MI",    # iShares Bond UCITS ETF
-    "BIT:AT1": "AT1.MI",          # Additional Tier 1 Bond ETF
+    "BIT:VGEA": "VGEA.MI",        # Vanguard EUR Eurozone Government Bond UCITS ETF EUR Acc
+    "BIT:X710": "X710.MI",        # Xtrackers II Eurozone Government Bond 7-10 UCITS ETF
+    "BIT:CSBGE7": "CSBGE7.MI",    # iShares € Govt Bond 3-7yr ETF EUR Acc
+    "BIT:CSBGU3": "CSBGU3.MI",    # iShares $ Treasury Bd 1-3y ETF USD Acc
+    "BIT:AT1": "AT1.MI",          # Invesco AT1 Capital Bond ETF
+    "BIT:CONV": "CONV.MI",          # SPDR FTSE Global Convertible Bond UCITS ETF
     "BIT:SWDA": "SWDA.MI",        # iShares Core MSCI World UCITS ETF USD Acc
+    "BIT:XDEB": "XDEB.MI",        # Xtrackers MSCI World Minimum Volatility UCITS ETF
+    "BIT:XDEM": "XDEM.MI",        # Xtrackers MSCI World Momentum UCITS ETF
+    "BIT:INFL-ETFP": "INFL.MI",   # Amundi Euro Inflation Expectations 2-10Y UCITS ETF Acc
+    "BIT:IBCI-ETFP": "IBCI.MI",   # iShares € Inflation Linked Govt Bond UCITS ETF EUR Acc
+    "BIT:LEONIA": "LEONIA.MI",    # Amundi EUR Overnight Return UCITS ETF Acc
+    "BIT:XEON": "XEON.MI",        # Xtrackers II EUR Overnight Rate Swap UCITS ETF
+    "SWX:BITC": "BITC.SW",        # CoinShares Physical Bitcoin
+    "BTCEUR": "BTC-EUR",          # Bitcoin/Euro
 }
 
 def clean_csv_value(value):
@@ -74,8 +87,10 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     
     df = df.rename(columns=column_map)
     
-    # Filtra solo Buy e Sell
-    df = df[df['tipo'].isin(['Buy', 'Sell'])]
+    # Filtra operazioni valide (Buy, Sell, Bonifico, Prelievo, Imposta)
+    operazioni_valide = ['Buy', 'Sell', 'Bonifico', 'Prelievo', 'Imposta']
+    df = df[df['tipo'].isin(operazioni_valide)]
+
     
     # Pulisci dati
     df['data'] = df['data'].apply(parse_date)
@@ -100,30 +115,73 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     # Importa transazioni valide
     for idx, row in df_valide.iterrows():
         try:
-            if pd.isna(row['data']) or pd.isna(row['quantita']) or pd.isna(row['prezzo_unitario']):
-                continue
-            
-            importo = row['quantita'] * row['prezzo_unitario']
-            
+            # Gestione speciale per Bonifico, Prelievo, Imposta
+            if row['tipo'] in ['Bonifico', 'Deposito']:
+                # Deposito liquidità
+                ticker_finale = 'LIQUIDITA'
+                tipo_finale = 'Deposit'
+                totale = clean_csv_value(row.get('totale', 0))
+                quantita_finale = abs(totale) if totale else 0
+                prezzo_finale = 1.0
+                importo_finale = quantita_finale
+                commissioni_finale = 0
+                note_finale = "Deposito liquidità"
+                
+            elif row['tipo'] == 'Prelievo':
+                # Prelievo liquidità
+                ticker_finale = 'LIQUIDITA'
+                tipo_finale = 'Withdrawal'
+                totale = clean_csv_value(row.get('totale', 0))
+                quantita_finale = -abs(totale) if totale else 0
+                prezzo_finale = 1.0
+                importo_finale = quantita_finale
+                commissioni_finale = 0
+                note_finale = "Prelievo liquidità"
+                
+            elif row['tipo'] == 'Imposta':
+                # Imposta (sottrae dalla liquidità)
+                ticker_finale = 'LIQUIDITA'
+                tipo_finale = 'Tax'
+                totale = clean_csv_value(row.get('totale', 0))
+                quantita_finale = -abs(totale) if totale else 0
+                prezzo_finale = 1.0
+                importo_finale = quantita_finale
+                commissioni_finale = 0
+                note_finale = "Imposta/Tassa"
+                
+            else:
+                # Buy o Sell normale
+                if pd.isna(row['data']) or pd.isna(row['quantita']) or pd.isna(row['prezzo_unitario']):
+                    continue
+                
+                ticker_finale = row['ticker_yahoo']
+                tipo_finale = row['tipo']
+                quantita_finale = float(row['quantita'])
+                prezzo_finale = float(row['prezzo_unitario'])
+                importo_finale = quantita_finale * prezzo_finale
+                commissioni_finale = float(row['commissioni']) if row['commissioni'] else 0
+                note_finale = f"Importato da CSV - {row['ticker']}"
+
             response = supabase_client.table("transazioni").insert({
                 "user_id": user_id,
                 "data": row['data'],
-                "ticker": row['ticker_yahoo'],
-                "tipo": row['tipo'],
-                "quantita": float(row['quantita']),
-                "prezzo_unitario": float(row['prezzo_unitario']),
-                "importo": float(importo),
-                "commissioni": float(row['commissioni']) if row['commissioni'] else 0,
-                "note": f"Importato da CSV - {row['ticker']}",
+                "ticker": ticker_finale,
+                "tipo": tipo_finale,
+                "quantita": quantita_finale,
+                "prezzo_unitario": prezzo_finale,
+                "importo": importo_finale,
+                "commissioni": commissioni_finale,
+                "note": note_finale,
                 "created_at": datetime.now().isoformat()
             }).execute()
-            
+        
             transazioni_importate += 1
-            print(f"✓ {row['data']} | {row['tipo']} | {row['ticker_yahoo']} | {row['quantita']} unità")
-            
+            print(f"✓ {row['data']} | {tipo_finale} | {ticker_finale} | {quantita_finale}")
+        
         except Exception as e:
             errori.append(f"Errore riga {idx}: {str(e)}")
             print(f"✗ Errore riga {idx}: {e}")
+
     
     # Report
     print("\n" + "="*60)
