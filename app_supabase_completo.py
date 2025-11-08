@@ -1252,7 +1252,7 @@ def page_analisi_portafoglio():
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
 def page_simulazione_fire():
-    """Pagina Simulazione FIRE - Input manuale CAGR"""
+    """Pagina Simulazione FIRE - Usa parametri da Configurazione"""
     st.title("🔥 Simulazione FIRE (Financial Independence, Retire Early)")
     
     metrics, df = get_portfolio_metrics()
@@ -1261,7 +1261,20 @@ def page_simulazione_fire():
         st.info("📭 Nessun dato portafoglio per simulazione FIRE")
         return
     
-    st.info("💡 **FIRE Calculator**: Calcola indipendenza finanziaria")
+    st.info("💡 **FIRE Calculator**: I valori di default provengono dalla pagina Configurazione")
+    
+    # LEGGI parametri dalla configurazione
+    tasso_risk_free = float(supabase.get_config(user_id, "tasso_risk_free", "0.025"))
+    inflazione = float(supabase.get_config(user_id, "inflazione", "0.02"))
+    orizzonte_temporale = int(supabase.get_config(user_id, "orizzonte_temporale", "30"))
+    versamento_mensile = float(supabase.get_config(user_id, "versamento_mensile", "500"))
+    
+    # Prova a leggere anche altri parametri FIRE se esistono
+    tasso_prelievo_default = float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0"))
+    spese_annue_default = float(supabase.get_config(user_id, "spese_annue_fire", "30000"))
+    eta_attuale_default = int(supabase.get_config(user_id, "eta_attuale", "30"))
+    cagr_accumulo_default = float(supabase.get_config(user_id, "cagr_accumulo", "4.0"))
+    cagr_prelievi_default = float(supabase.get_config(user_id, "cagr_prelievi", "3.0"))
     
     # Parametri FIRE
     st.subheader("💰 Parametri Simulazione")
@@ -1277,8 +1290,9 @@ def page_simulazione_fire():
             "Versamento mensile (€)",
             min_value=0,
             max_value=50000,
-            value=500,
-            step=100
+            value=int(versamento_mensile),  # Da configurazione
+            step=100,
+            help="Default dalla Configurazione"
         )
     
     with col3:
@@ -1286,19 +1300,19 @@ def page_simulazione_fire():
             "Spese annue desiderate (€)",
             min_value=0,
             max_value=500000,
-            value=30000,
+            value=int(spese_annue_default),  # Da configurazione
             step=1000,
             help="Quanto vuoi spendere all'anno dopo FIRE"
         )
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         cagr_accumulation = st.number_input(
             "CAGR Accumulo (%)",
             min_value=0.0,
             max_value=20.0,
-            value=4.0,
+            value=cagr_accumulo_default,  # Da configurazione o input utente
             step=0.1,
             help="Tasso di crescita annuo durante accumulo"
         )
@@ -1308,7 +1322,7 @@ def page_simulazione_fire():
             "CAGR Prelievi (%)",
             min_value=0.0,
             max_value=20.0,
-            value=3.0,
+            value=cagr_prelievi_default,  # Da configurazione
             step=0.1,
             help="Tasso di crescita annuo durante prelievi"
         )
@@ -1318,17 +1332,27 @@ def page_simulazione_fire():
             "Tasso Prelievo Annuo (%)",
             min_value=1.0,
             max_value=10.0,
-            value=4.0,
+            value=tasso_prelievo_default,  # Da configurazione
             step=0.5,
             help="Regola del 4%"
         )
     
-    # Input età PRIMA della simulazione
+    with col4:
+        inflation_rate = st.number_input(
+            "Inflazione annua (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=inflazione * 100,  # Da configurazione
+            step=0.1,
+            help="Tasso inflazione per indicizzare le spese"
+        )
+    
+    # Input età
     fire_age = st.number_input(
         "Età attuale",
         min_value=18,
         max_value=80,
-        value=30,
+        value=eta_attuale_default,  # Da configurazione
         help="Inserisci la tua età attuale"
     )
     
@@ -1631,6 +1655,74 @@ def page_configurazione():
         st.info(f"💰 **Costo Totale Leva: {costo_totale_leva:.2f}% annuo**\n\nEuribor 3M: {euribor:.2f}% + Spread: {spread:.2f}%")
     
     st.divider()
+    st.subheader("🔥 Parametri FIRE")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        eta_attuale = st.number_input(
+            "Età attuale",
+            min_value=18,
+            max_value=80,
+            value=int(supabase.get_config(user_id, "eta_attuale", "30")),
+            help="La tua età attuale"
+        )
+    
+    with col2:
+        spese_annue_fire = st.number_input(
+            "Spese annue desiderate (€)",
+            min_value=0,
+            max_value=500000,
+            value=int(supabase.get_config(user_id, "spese_annue_fire", "30000")),
+            step=1000,
+            help="Quanto vuoi spendere all'anno in FIRE"
+        )
+    
+    with col3:
+        tasso_prelievo_fire = st.number_input(
+            "Tasso prelievo FIRE (%)",
+            min_value=1.0,
+            max_value=10.0,
+            value=float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0")),
+            step=0.5,
+            help="Regola del 4% standard"
+        )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        cagr_accumulo = st.number_input(
+            "CAGR Accumulo (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=float(supabase.get_config(user_id, "cagr_accumulo", "4.0")),
+            step=0.1,
+            help="Rendimento atteso in fase accumulo"
+        )
+    
+    with col2:
+        cagr_prelievi = st.number_input(
+            "CAGR Prelievi (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=float(supabase.get_config(user_id, "cagr_prelievi", "3.0")),
+            step=0.1,
+            help="Rendimento atteso in fase prelievi (più conservativo)"
+        )
+    
+    # Bottone salva
+    if st.button("💾 Salva Configurazione", type="primary"):
+        # Salva parametri esistenti + nuovi parametri FIRE
+        supabase.set_config(user_id, "eta_attuale", str(eta_attuale))
+        supabase.set_config(user_id, "spese_annue_fire", str(spese_annue_fire))
+        supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo_fire))
+        supabase.set_config(user_id, "cagr_accumulo", str(cagr_accumulo))
+        supabase.set_config(user_id, "cagr_prelievi", str(cagr_prelievi))
+        
+        st.success("✅ Configurazione salvata! I valori saranno usati in FIRE e altre pagine.")
+
+
+
     st.success("✓ Tutte le configurazioni vengono salvate automaticamente su Supabase!")
 
 # ==================== MAIN ====================
