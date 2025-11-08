@@ -1325,6 +1325,16 @@ def page_simulazione_fire():
     
     fire_number = annual_expenses / (withdrawal_rate / 100)
     
+        # Impostazione età inserita dall'utente prima del calcolo
+    fire_age = st.number_input(
+        "Età attuale",
+        min_value=18,
+        max_value=80,
+        value=30,
+        help="Inserisci la tua età attuale"
+    )
+
+
     st.divider()
     st.subheader("🎯 Risultati Simulazione FIRE")
     
@@ -1335,6 +1345,8 @@ def page_simulazione_fire():
         
         accumulation_data = []
         
+        st.metric("🎂 Età al FIRE", f"{fire_age + years_to_fire} anni")
+
         max_years = 50
         fire_reached = False
         
