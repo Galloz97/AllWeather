@@ -1565,125 +1565,156 @@ def page_import_csv():
 # ==================== PAGINA CONFIGURAZIONE ====================
 
 def page_configurazione():
-    """Pagina Configurazione Parametri Personali"""
+    """Pagina Configurazione con validazione"""
     st.title("⚙️ Configurazione")
     
-    st.subheader("🔧 Parametri Globali")
+    # Helper per validare valori
+    def safe_float(config_value, default, min_val=None, max_val=None):
+        """Leggi e valida un valore float dalla config"""
+        try:
+            val = float(config_value)
+            if min_val is not None:
+                val = max(min_val, val)
+            if max_val is not None:
+                val = min(max_val, val)
+            return val
+        except:
+            return float(default)
+    
+    def safe_int(config_value, default, min_val=None, max_val=None):
+        """Leggi e valida un valore int dalla config"""
+        try:
+            val = int(config_value)
+            if min_val is not None:
+                val = max(min_val, val)
+            if max_val is not None:
+                val = min(max_val, val)
+            return val
+        except:
+            return int(default)
+    
+    # Parametri generali
+    st.subheader("📊 Parametri Generali")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        tasso_risk_free_val = safe_float(
+            supabase.get_config(user_id, "tasso_risk_free", "0.025"),
+            "0.025", 0.0, 0.2
+        )
+        tasso_risk_free = st.number_input(
+            "Tasso Risk-Free (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=tasso_risk_free_val * 100,
+            step=0.1,
+            help="Tasso di interesse senza rischio"
+        )
+    
+    with col2:
+        inflazione_val = safe_float(
+            supabase.get_config(user_id, "inflazione", "0.02"),
+            "0.02", 0.0, 0.2
+        )
+        inflazione = st.number_input(
+            "Inflazione (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=inflazione_val * 100,
+            step=0.1,
+            help="Tasso inflazione annuale"
+        )
+    
+    with col3:
+        orizzonte_val = safe_int(
+            supabase.get_config(user_id, "orizzonte_temporale", "30"),
+            "30", 1, 50
+        )
+        orizzonte_temporale = st.number_input(
+            "Orizzonte temporale (anni)",
+            min_value=1,
+            max_value=50,
+            value=orizzonte_val,
+            step=1,
+            help="Anni di investimento"
+        )
+    
+    # PAC
+    st.subheader("💰 Piano di Accumulo Capitale (PAC)")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Parametri Economici")
-        
-        tasso_risk_free = st.slider(
-            "Tasso Risk-Free (%)",
-            min_value=0.0,
-            max_value=5.0,
-            value=float(supabase.get_config(user_id, "tasso_risk_free", "2.5")) / 100,
-            step=0.1,
-            key="config_risk_free"
-        ) * 100
-        
-        if st.button("Salva Tasso Risk-Free"):
-            supabase.set_config(user_id, "tasso_risk_free", str(tasso_risk_free))
-            st.success("✓ Salvato")
-        
-        st.divider()
-        
-        tasso_inflazione = st.slider(
-            "Inflazione Attesa (%)",
-            min_value=0.5,
-            max_value=5.0,
-            value=float(supabase.get_config(user_id, "tasso_inflazione", "2.0")) / 100,
-            step=0.1,
-            key="config_inflation"
-        ) * 100
-        
-        if st.button("Salva Inflazione"):
-            supabase.set_config(user_id, "tasso_inflazione", str(tasso_inflazione))
-            st.success("✓ Salvato")
-        
-        st.divider()
-        
-        tasso_prelievo = st.slider(
-            "Tasso Prelievo FIRE (%)",
-            min_value=2.0,
-            max_value=5.0,
-            value=float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0")) / 100,
-            step=0.1,
-            key="config_fire_rate"
-        ) * 100
-        
-        if st.button("Salva Tasso Prelievo FIRE"):
-            supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo))
-            st.success("✓ Salvato")
+        versamento_val = safe_float(
+            supabase.get_config(user_id, "versamento_mensile", "500"),
+            "500", 0, 50000
+        )
+        versamento_mensile = st.number_input(
+            "Versamento mensile (€)",
+            min_value=0,
+            max_value=50000,
+            value=int(versamento_val),
+            step=100,
+            help="Versamento mensile PAC"
+        )
     
     with col2:
-        st.subheader("Credit Lombard (Leva)")
-        
-        euribor = st.slider(
-            "Euribor 3M (%)",
-            min_value=0.0,
-            max_value=5.0,
-            value=float(supabase.get_config(user_id, "euribor_3m", "3.5")) / 100,
-            step=0.1,
-            key="config_euribor"
-        ) * 100
-        
-        if st.button("Salva Euribor"):
-            supabase.set_config(user_id, "euribor_3m", str(euribor))
-            st.success("✓ Salvato")
-        
-        st.divider()
-        
-        spread = st.slider(
-            "Spread Banca (%)",
-            min_value=0.5,
-            max_value=3.0,
-            value=float(supabase.get_config(user_id, "spread_credit_lombard", "2.0")) / 100,
-            step=0.1,
-            key="config_spread"
-        ) * 100
-        
-        if st.button("Salva Spread"):
-            supabase.set_config(user_id, "spread_credit_lombard", str(spread))
-            st.success("✓ Salvato")
-        
-        st.divider()
-        
-        costo_totale_leva = (euribor + spread)
-        st.info(f"💰 **Costo Totale Leva: {costo_totale_leva:.2f}% annuo**\n\nEuribor 3M: {euribor:.2f}% + Spread: {spread:.2f}%")
+        versamento_annuo_val = safe_float(
+            supabase.get_config(user_id, "versamento_annuale", "0"),
+            "0", 0, 1000000
+        )
+        versamento_annuale = st.number_input(
+            "Versamento annuale (€)",
+            min_value=0,
+            max_value=1000000,
+            value=int(versamento_annuo_val),
+            step=1000,
+            help="Versamento annuale (bonus, 13a)"
+        )
     
-    st.divider()
+    # FIRE
     st.subheader("🔥 Parametri FIRE")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
+        eta_val = safe_int(
+            supabase.get_config(user_id, "eta_attuale", "30"),
+            "30", 18, 80
+        )
         eta_attuale = st.number_input(
             "Età attuale",
             min_value=18,
             max_value=80,
-            value=int(supabase.get_config(user_id, "eta_attuale", "30")),
+            value=eta_val,
             help="La tua età attuale"
         )
     
     with col2:
+        spese_val = safe_float(
+            supabase.get_config(user_id, "spese_annue_fire", "30000"),
+            "30000", 0, 500000
+        )
         spese_annue_fire = st.number_input(
             "Spese annue desiderate (€)",
             min_value=0,
             max_value=500000,
-            value=int(supabase.get_config(user_id, "spese_annue_fire", "30000")),
+            value=int(spese_val),
             step=1000,
             help="Quanto vuoi spendere all'anno in FIRE"
         )
     
     with col3:
+        tasso_prelievo_val = safe_float(
+            supabase.get_config(user_id, "tasso_prelievo_fire", "4.0"),
+            "4.0", 1.0, 10.0
+        )
         tasso_prelievo_fire = st.number_input(
             "Tasso prelievo FIRE (%)",
             min_value=1.0,
             max_value=10.0,
-            value=float(supabase.get_config(user_id, "tasso_prelievo_fire", "4.0")),
+            value=tasso_prelievo_val,
             step=0.5,
             help="Regola del 4% standard"
         )
@@ -1691,35 +1722,48 @@ def page_configurazione():
     col1, col2 = st.columns(2)
     
     with col1:
+        cagr_acc_val = safe_float(
+            supabase.get_config(user_id, "cagr_accumulo", "4.0"),
+            "4.0", 0.0, 20.0
+        )
         cagr_accumulo = st.number_input(
             "CAGR Accumulo (%)",
             min_value=0.0,
             max_value=20.0,
-            value=float(supabase.get_config(user_id, "cagr_accumulo", "4.0")),
+            value=cagr_acc_val,
             step=0.1,
             help="Rendimento atteso in fase accumulo"
         )
     
     with col2:
+        cagr_prel_val = safe_float(
+            supabase.get_config(user_id, "cagr_prelievi", "3.0"),
+            "3.0", 0.0, 20.0
+        )
         cagr_prelievi = st.number_input(
             "CAGR Prelievi (%)",
             min_value=0.0,
             max_value=20.0,
-            value=float(supabase.get_config(user_id, "cagr_prelievi", "3.0")),
+            value=cagr_prel_val,
             step=0.1,
-            help="Rendimento atteso in fase prelievi (più conservativo)"
+            help="Rendimento atteso in fase prelievi"
         )
     
-    # Bottone salva
+    # Salva
     if st.button("💾 Salva Configurazione", type="primary"):
-        # Salva parametri esistenti + nuovi parametri FIRE
+        supabase.set_config(user_id, "tasso_risk_free", str(tasso_risk_free / 100))
+        supabase.set_config(user_id, "inflazione", str(inflazione / 100))
+        supabase.set_config(user_id, "orizzonte_temporale", str(orizzonte_temporale))
+        supabase.set_config(user_id, "versamento_mensile", str(versamento_mensile))
+        supabase.set_config(user_id, "versamento_annuale", str(versamento_annuale))
         supabase.set_config(user_id, "eta_attuale", str(eta_attuale))
         supabase.set_config(user_id, "spese_annue_fire", str(spese_annue_fire))
         supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo_fire))
         supabase.set_config(user_id, "cagr_accumulo", str(cagr_accumulo))
         supabase.set_config(user_id, "cagr_prelievi", str(cagr_prelievi))
         
-        st.success("✅ Configurazione salvata! I valori saranno usati in FIRE e altre pagine.")
+        st.success("✅ Configurazione salvata!")
+
 
 
 
