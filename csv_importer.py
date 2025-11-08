@@ -66,11 +66,9 @@ def get_ticker_mapping(ticker_bit):
     return TICKER_MAPPING.get(ticker_bit, None)
 
 def process_csv(csv_file_path, user_id: str, supabase_client: Client):
-    """Processa il CSV e importa le transazioni su Supabase"""
-    # Leggi CSV
+    """Processa il CSV e importa le transazioni su Supabase (cash compreso)"""
     df = pd.read_csv(csv_file_path, sep=",")
     df.columns = [col.strip().lower() for col in df.columns]
-
     column_map = {
         "inserisci la data dell'operazione": "data",
         "inserisci l'operazione": "tipo",
@@ -89,12 +87,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     def clean(val):
         if pd.isna(val) or val == "" or val is None:
             return None
-        # Se arriva una lista o qualsiasi cosa non-str, la riunisco in stringa
-        if isinstance(val, list):
-            val = ".".join([str(x) for x in val])
-        elif isinstance(val, tuple):
-            val = ".".join([str(x) for x in val])
-        elif isinstance(val, (float, int)):
+        if isinstance(val, (float, int)):
             return float(val)
         val = str(val).replace("€", "").replace(" ", "").replace(".", "").replace(",", ".").strip()
         try:
@@ -102,15 +95,14 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
         except Exception:
             return None
 
-
     def parse_date(x):
         try:
-            return pd.to_datetime(x, format="%d/%m/%Y").strftime("%Y-%m-%d")
+            return pd.to_datetime(str(x), format="%d/%m/%Y").strftime("%Y-%m-%d")
         except:
             return None
 
     for idx, row in df.iterrows():
-        tipo = row.get("tipo", "").strip()
+        tipo = str(row.get("tipo", "")).strip()
         data = parse_date(row.get("data", ""))
         ticker = str(row.get("ticker", "")).strip()
         quantita = clean(row.get("quantita", None))
@@ -119,43 +111,45 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
         totale = clean(row.get("totale", None))
         note = ""
 
-        # Gestione LIQUIDITA'
-        if tipo in ["Bonifico", "Deposito"]:
+        # LIQUIDITÀ: Bonifico / Prelievo / Imposta
+        if tipo.lower() in ["bonifico", "deposito"]:
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Deposit"
             quantita_finale = abs(totale) if totale else 0
             prezzo_finale = 1.0
             importo_finale = quantita_finale
-            note = "Deposito di liquidità"
-        elif tipo in ["Prelievo"]:
+            note = "Deposito Liquidità"
+        elif tipo.lower() == "prelievo":
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Withdrawal"
             quantita_finale = -abs(totale) if totale else 0
             prezzo_finale = 1.0
             importo_finale = quantita_finale
-            note = "Prelievo di liquidità"
-        elif tipo == "Imposta":
+            note = "Prelievo Liquidità"
+        elif tipo.lower() == "imposta":
             ticker_finale = "LIQUIDITA"
             tipo_finale = "Tax"
             quantita_finale = -abs(totale) if totale else 0
             prezzo_finale = 1.0
             importo_finale = quantita_finale
-            note = "Uscita imposta/tassa"
-        # Movimenti titoli normali
+            note = "Imposta/Tassa"
+        # Movimenti titoli
         elif tipo in ["Buy", "Sell"]:
-            # Ticker mapping per Borsa Italiana → Yahoo Finance
+            # Ticker mapping
             if isinstance(ticker, str) and ticker.startswith("BIT:"):
-                ticker_finale = TICKER_MAPPING.get(ticker, ticker.replace("BIT:", "") + ".MI")
+                ticker_finale = ticker.replace("BIT:", "") + ".MI"
+            elif ticker and not ticker.upper() in ["EURO", ""]:
+                ticker_finale = ticker
             else:
                 non_mappate += 1
-                continue  # Skip se non troviamo mapping
+                continue
             tipo_finale = tipo
-            if quantita is None:
+            if quantita is None or pmc is None:
                 non_mappate += 1
                 continue
             quantita_finale = quantita if tipo == "Buy" else -abs(quantita)
             prezzo_finale = pmc
-            importo_finale = quantita * pmc if quantita is not None and pmc is not None else totale or 0
+            importo_finale = quantita * pmc
             note = f"Importato da CSV: {ticker}"
         else:
             non_mappate += 1
@@ -183,6 +177,7 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
         'errori': len(errori),
         'non_mappate': non_mappate
     }
+
 
 
 # ==================== STREAMLIT UI ====================
