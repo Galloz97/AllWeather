@@ -51,6 +51,19 @@ def get_stock_data(ticker, period="1y"):
     except:
         return None
 
+@st.cache_data(ttl=3600)  # Cache per 1 ora
+def get_stock_data_cached(ticker, period="1y"):
+    """Scarica dati storici con cache"""
+    try:
+        data = yf.download(ticker, period=period, progress=False, timeout=10)
+        if not data.empty and 'Close' in data.columns:
+            return data['Close']
+        return None
+    except Exception as e:
+        print(f"Errore download {ticker}: {e}")
+        return None
+
+
 @st.cache_data(ttl=3600)
 def get_current_price(ticker):
     """Recupera prezzo attuale di un ticker"""
@@ -382,63 +395,83 @@ def calculate_relaxed_risk_parity(df, min_weight=0.05, max_weight=0.40):
 
 
 def monte_carlo_simulation(df, n_simulations=1000, days=252):
-    """Simulazione Monte Carlo del portafoglio"""
+    """Simulazione Monte Carlo"""
     try:
         # Prepara dati
         tickers = df['Ticker'].tolist()
-        weights = (df['Peso %'] / 100).tolist()
+        weights = (df['Peso %'] / 100).values
         initial_value = df['Valore Totale'].sum()
         
-        # Calcola rendimenti e volatilità storici
+        # OTTIMIZZAZIONE: Scarica dati UNA SOLA VOLTA e calcola rendimenti/volatilità
         returns = []
         vols = []
         
+        print(f"📥 Download dati per {len(tickers)} ticker...")
+        
         for ticker in tickers:
             try:
-                data = yf.download(ticker, period="1y", progress=False)
-                if not data.empty and 'Close' in data.columns:
-                    ret = data['Close'].pct_change().mean()
-                    vol = calculate_volatility(ticker)
+                # Usa cache! Scarica solo se non già in cache
+                close_prices = get_stock_data_cached(ticker, period="1y")
+                
+                if close_prices is not None and len(close_prices) > 20:
+                    # Calcola rendimento medio giornaliero
+                    daily_returns = close_prices.pct_change().dropna()
+                    ret = daily_returns.mean()
+                    vol = daily_returns.std() * np.sqrt(252)  # Volatilità annualizzata
                     
-                    if vol is not None:
-                        vol_float = float(vol)
-                        if not np.isnan(vol_float):
-                            returns.append(float(ret) if not np.isnan(ret) else 0)
-                            vols.append(vol_float)
-                        else:
-                            returns.append(0)
-                            vols.append(0.15)  # Default volatility
-                    else:
-                        returns.append(0)
-                        vols.append(0.15)
+                    returns.append(float(ret) if not np.isnan(ret) else 0.0005)  # ~12% annuo default
+                    vols.append(float(vol) if not np.isnan(vol) and vol > 0 else 0.15)
                 else:
-                    returns.append(0)
-                    vols.append(0.15)
+                    # Valori di fallback
+                    returns.append(0.0005)  # ~12% annuo
+                    vols.append(0.15)  # 15% volatilità
+                    
             except Exception as e:
-                print(f"Errore Monte Carlo per {ticker}: {e}")
-                returns.append(0)
+                print(f"Errore {ticker}: {e}")
+                returns.append(0.0005)
                 vols.append(0.15)
         
-        # Simulazioni
-        simulations = np.zeros((n_simulations, days))
+        returns = np.array(returns)
+        vols = np.array(vols)
         
-        for i in range(n_simulations):
-            portfolio_value = initial_value
-            
-            for day in range(days):
-                daily_return = 0
-                for j, (ret, vol, weight) in enumerate(zip(returns, vols, weights)):
-                    # Random walk
-                    random_return = np.random.normal(ret / 252, vol / np.sqrt(252))
-                    daily_return += random_return * weight
-                
-                portfolio_value *= (1 + daily_return)
-                simulations[i, day] = portfolio_value
+        print(f"🎲 Esecuzione {n_simulations:,} simulazioni su {days} giorni...")
+        
+        # OTTIMIZZAZIONE: Usa NumPy vectorization completo
+        # Pre-genera TUTTI i random numbers in una volta sola (MOLTO PIÙ VELOCE)
+        np.random.seed(42)  # Per riproducibilità
+        
+        # Shape: (n_simulations, days, n_assets)
+        random_matrix = np.random.normal(
+            loc=0,
+            scale=1,
+            size=(n_simulations, days, len(tickers))
+        )
+        
+        # Calcola rendimenti giornalieri per tutti gli asset
+        # Broadcast: rendimenti medi + volatilità * random
+        daily_returns_matrix = (
+            returns / 252 +  # Rendimento medio giornaliero
+            vols / np.sqrt(252) * random_matrix  # Componente random
+        )
+        
+        # Pesa i rendimenti per il portafoglio
+        portfolio_returns = np.sum(daily_returns_matrix * weights, axis=2)  # Shape: (n_simulations, days)
+        
+        # Calcola valore cumulativo del portafoglio
+        # Converti rendimenti in moltiplicatori: 1 + rendimento
+        cumulative_returns = np.cumprod(1 + portfolio_returns, axis=1)
+        
+        # Moltiplica per valore iniziale
+        simulations = initial_value * cumulative_returns
+        
+        print(f"✅ Simulazione completata!")
         
         return simulations
-    
+        
     except Exception as e:
         print(f"Errore simulazione Monte Carlo: {e}")
+        import traceback
+        traceback.print_exc()
         return np.array([[]])
 
 
