@@ -129,6 +129,35 @@ def get_portfolio_metrics():
     
     return metrics, df
 
+# =================== CALCOLO LIQUITIDA'====================
+
+def get_saldo_liquidita():
+    """Calcola il saldo della liquidità dalle transazioni"""
+    try:
+        transazioni_df = supabase.get_transazioni(user_id)
+        
+        if transazioni_df.empty:
+            return 0.0
+        
+        # Filtra transazioni di liquidità
+        liquidita_df = transazioni_df[transazioni_df['ticker'] == 'LIQUIDITA']
+        
+        if liquidita_df.empty:
+            return 0.0
+        
+        # Calcola saldo
+        saldo = 0.0
+        for _, trans in liquidita_df.iterrows():
+            if trans['tipo'] in ['Deposit', 'Bonifico']:
+                saldo += abs(float(trans['importo']))
+            elif trans['tipo'] in ['Withdrawal', 'Prelievo', 'Tax', 'Imposta']:
+                saldo -= abs(float(trans['importo']))
+        
+        return saldo
+    except Exception as e:
+        print(f"Errore calcolo liquidità: {e}")
+        return 0.0
+
 # ==================== CALCOLI ANALITICI ====================
 
 def calculate_volatility(ticker):
@@ -311,6 +340,38 @@ def page_monitoraggio():
         st.metric("Commissioni Totali", format_currency(stats.get('commissioni_totale', 0)))
     
     st.divider()
+
+    # Mostra saldo liquidità
+    saldo_liquidita = get_saldo_liquidita()
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Composizione Portafoglio")
+    
+    with col2:
+        st.metric("💰 Liquidità Disponibile", format_currency(saldo_liquidita))
+    
+    # Aggiungi liquidità al dataframe se > 0
+    if metrics and saldo_liquidita > 0:
+        liquidita_row = pd.DataFrame([{
+            'Ticker': 'LIQUIDITA',
+            'Quantità': saldo_liquidita,
+            'Prezzo Acq.': 1.0,
+            'Prezzo Att.': 1.0,
+            'Valore Totale': saldo_liquidita,
+            'Costo Totale': saldo_liquidita,
+            'P&L €': 0,
+            'P&L %': 0,
+            'Asset Class': 'Cash',
+            'Peso %': (saldo_liquidita / (metrics['valore_totale'] + saldo_liquidita) * 100)
+        }])
+        
+        df = pd.concat([df, liquidita_row], ignore_index=True)
+        
+        # Ricalcola pesi con liquidità
+        totale_con_liquidita = metrics['valore_totale'] + saldo_liquidita
+        df['Peso %'] = (df['Valore Totale'] / totale_con_liquidita * 100)
     
     # Tabella Portafoglio
     st.subheader("Composizione Portafoglio")
@@ -429,8 +490,11 @@ def page_storico_transazioni():
     with col2:
         ticker_filter = st.text_input("Filtra per Ticker (vuoto = tutti)", "", key="ticker_filter")
     
-    with col3:
-        tipo_filter = st.selectbox("Filtra per Tipo", ["Tutti", "Buy", "Sell", "Dividend"], key="tipo_filter")
+   with col3:
+    tipo_filter = st.selectbox("Filtra per Tipo", 
+                               ["Tutti", "Buy", "Sell", "Dividend", "Deposit", "Withdrawal", "Tax"], 
+                               key="tipo_filter")
+
     
     # Recupera transazioni
     transazioni_df = supabase.get_transazioni(
@@ -523,6 +587,79 @@ def page_storico_transazioni():
                 st.error(f"Errore: {result['error']}")
         else:
             st.warning("Inserisci valori validi")
+
+    st.divider()
+    
+    # Gestione Liquidità
+    st.subheader("💰 Gestione Liquidità")
+    
+    tab1, tab2 = st.tabs(["💵 Deposito", "💸 Prelievo"])
+    
+    with tab1:
+        st.write("**Aggiungi Deposito di Liquidità**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            deposit_data = st.date_input("Data Deposito", key="deposit_data")
+        with col2:
+            deposit_importo = st.number_input("Importo (€)", min_value=0.0, key="deposit_importo")
+        with col3:
+            deposit_note = st.text_input("Note", "Deposito bonifico", key="deposit_note")
+        
+        if st.button("✅ Aggiungi Deposito"):
+            if deposit_importo > 0:
+                result = supabase.add_transazione(
+                    user_id=user_id,
+                    data=deposit_data.strftime('%Y-%m-%d'),
+                    ticker='LIQUIDITA',
+                    tipo='Deposit',
+                    quantita=deposit_importo,
+                    prezzo_unitario=1.0,
+                    commissioni=0,
+                    note=deposit_note
+                )
+                
+                if result['success']:
+                    st.success(f"✓ Deposito di {format_currency(deposit_importo)} aggiunto!")
+                    st.rerun()
+                else:
+                    st.error(f"Errore: {result['error']}")
+            else:
+                st.warning("Inserisci un importo valido")
+    
+    with tab2:
+        st.write("**Aggiungi Prelievo di Liquidità**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            withdrawal_data = st.date_input("Data Prelievo", key="withdrawal_data")
+        with col2:
+            withdrawal_importo = st.number_input("Importo (€)", min_value=0.0, key="withdrawal_importo")
+        with col3:
+            withdrawal_note = st.text_input("Note", "Prelievo", key="withdrawal_note")
+        
+        if st.button("✅ Aggiungi Prelievo"):
+            if withdrawal_importo > 0:
+                result = supabase.add_transazione(
+                    user_id=user_id,
+                    data=withdrawal_data.strftime('%Y-%m-%d'),
+                    ticker='LIQUIDITA',
+                    tipo='Withdrawal',
+                    quantita=-withdrawal_importo,
+                    prezzo_unitario=1.0,
+                    commissioni=0,
+                    note=withdrawal_note
+                )
+                
+                if result['success']:
+                    st.success(f"✓ Prelievo di {format_currency(withdrawal_importo)} aggiunto!")
+                    st.rerun()
+                else:
+                    st.error(f"Errore: {result['error']}")
+            else:
+                st.warning("Inserisci un importo valido")
+
+
 
 # ==================== PAGINA ANALISI PORTAFOGLIO ====================
 
