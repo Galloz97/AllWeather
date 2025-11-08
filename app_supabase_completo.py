@@ -1155,7 +1155,7 @@ def page_analisi_portafoglio():
                         p90_final = np.percentile(final_values, 90)
                         st.metric("🚀 90° Percentile", format_currency(p90_final))
                     
-                                        st.divider()
+                    st.divider()
                     
                     # Rendimenti totali e CAGR
                     st.subheader("📈 Analisi Rendimenti")
