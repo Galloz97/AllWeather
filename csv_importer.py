@@ -100,11 +100,8 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
         try:
             return pd.to_datetime(str(x), format="%d/%m/%Y").strftime("%Y-%m-%d")
         except Exception as err:
-            print(f"Errore data: '{x}' -- {err}")
             return None
 
-    # LOG delle prime 5 richieste fallite
-    max_log = 5
     for idx, row in df.iterrows():
         tipo = str(row.get("tipo", "")).strip()
         data = parse_date(row.get("data", ""))
@@ -157,39 +154,35 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
             non_mappate += 1
             continue
 
-        try:
-            response = supabase_client.table("transazioni").insert({
-                "user_id": user_id,
-                "data": data,
-                "ticker": ticker_finale,
-                "tipo": tipo_finale,
-                "quantita": quantita_finale,
-                "prezzo_unitario": prezzo_finale,
-                "importo": importo_finale,
-                "commissioni": commissioni,
-                "note": note,
-                "created_at": datetime.now().isoformat()
-            }).execute()
-            transazioni_importate += 1
-        except Exception as e:
-            err_str = f"Errore riga {idx}: richiesta={{{'user_id': user_id, 'data': data, 'ticker': ticker_finale, 'tipo': tipo_finale, 'quantita': quantita_finale, 'prezzo_unitario': prezzo_finale, 'importo': importo_finale, 'commissioni': commissioni, 'note': note}}}\nSupabaseErrore: {e}\n{traceback.format_exc()}"
-            errori.append(err_str)
-            if len(errori) <= max_log:
-                print(err_str)
+        # Dati da inserire
+        insert_data = {
+            "user_id": user_id,
+            "data": data,
+            "ticker": ticker_finale,
+            "tipo": tipo_finale,
+            "quantita": quantita_finale,
+            "prezzo_unitario": prezzo_finale,
+            "importo": importo_finale,
+            "commissioni": commissioni,
+            "note": note,
+            "created_at": datetime.now().isoformat()
+        }
 
-    # Log anche come file per il debug
-    if errori:
-        with open('/tmp/import_error_debug.txt', 'w') as f:
-            for e in errori[:10]:
-                f.write(e + "\n----------------\n")
+        try:
+            response = supabase_client.table("transazioni").insert(insert_data).execute()
+            transazioni_importate += 1
+            print(f"✓ Riga {idx}: {tipo_finale} | {ticker_finale} | {data}")
+        except Exception as e:
+            error_msg = f"Riga {idx}: ERRORE - {str(e)}\nDati: {insert_data}"
+            errori.append(error_msg)
+            if len(errori) <= 5:
+                print(error_msg)
 
     return {
         'importate': transazioni_importate,
         'errori': len(errori),
         'non_mappate': non_mappate
     }
-
-
 
 # ==================== STREAMLIT UI ====================
 
