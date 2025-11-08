@@ -74,7 +74,7 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 def get_portfolio_metrics():
-    """Calcola metriche del portafoglio automaticamente dalle transazioni"""
+    """Calcola metriche del portafoglio con prezzo medio corretto (metodo weighted average)"""
     try:
         # Recupera tutte le transazioni
         transazioni_df = supabase.get_transazioni(user_id)
@@ -95,36 +95,47 @@ def get_portfolio_metrics():
             ticker_trans = transazioni_asset[transazioni_asset['ticker'] == ticker].copy()
             ticker_trans = ticker_trans.sort_values('data')
             
-            # Calcola quantità totale (Buy positivo, Sell negativo)
-            quantita_totale = 0
-            costo_totale_assoluto = 0
+            # Tracking quantità e costo con metodo media mobile ponderata
+            quantita_corrente = 0
+            costo_medio_corrente = 0
             
             for _, trans in ticker_trans.iterrows():
-                qty = float(trans['quantita'])  # Già positivo per Buy, negativo per Sell
+                qty = float(trans['quantita'])
                 prezzo = float(trans['prezzo_unitario'])
                 
-                # Aggiorna quantità
-                quantita_totale += qty
-                
-                # Per il costo: somma solo i Buy (qty > 0)
-                if qty > 0:
-                    costo_totale_assoluto += qty * prezzo
+                if qty > 0:  # Buy
+                    # Calcola nuovo prezzo medio ponderato
+                    if quantita_corrente > 0:
+                        # Media ponderata: (vecchio_costo*vecchia_qty + nuovo_costo*nuova_qty) / (vecchia_qty + nuova_qty)
+                        costo_medio_corrente = (costo_medio_corrente * quantita_corrente + prezzo * qty) / (quantita_corrente + qty)
+                    else:
+                        # Prima acquisizione
+                        costo_medio_corrente = prezzo
+                    
+                    quantita_corrente += qty
+                    
+                else:  # Sell (qty è negativo)
+                    # Vendita: riduci quantità ma mantieni lo stesso prezzo medio
+                    quantita_corrente += qty  # qty è già negativo
+                    
+                    # Se vendo tutto, resetta il prezzo medio
+                    if quantita_corrente <= 0:
+                        costo_medio_corrente = 0
             
-            # IMPORTANTE: Salta se quantità <= 0 (venduto tutto o mai comprato)
-            if quantita_totale <= 0.001:  # Usa tolleranza per errori floating point
+            # IMPORTANTE: Salta se quantità <= 0
+            if quantita_corrente <= 0.001:
                 continue
             
-            # Prezzo medio di acquisto (solo dai Buy)
-            prezzo_medio_acquisto = costo_totale_assoluto / quantita_totale if quantita_totale > 0 else 0
-            
-            # Prezzo corrente
+            # Prezzo corrente di mercato
             prezzo_corrente = get_current_price(ticker)
             if prezzo_corrente is None:
-                prezzo_corrente = prezzo_medio_acquisto
+                prezzo_corrente = costo_medio_corrente
             
-            valore_totale = quantita_totale * prezzo_corrente
-            guadagno = valore_totale - costo_totale_assoluto
-            guadagno_pct = (guadagno / costo_totale_assoluto * 100) if costo_totale_assoluto > 0 else 0
+            # Calcoli finali
+            costo_totale = quantita_corrente * costo_medio_corrente
+            valore_totale = quantita_corrente * prezzo_corrente
+            guadagno = valore_totale - costo_totale
+            guadagno_pct = (guadagno / costo_totale * 100) if costo_totale > 0 else 0
             
             # Determina asset class
             if ticker.endswith('.MI'):
@@ -134,11 +145,11 @@ def get_portfolio_metrics():
             
             portfolio_data.append({
                 'Ticker': ticker,
-                'Quantità': quantita_totale,
-                'Prezzo Acq.': prezzo_medio_acquisto,
+                'Quantità': quantita_corrente,
+                'Prezzo Acq.': costo_medio_corrente,
                 'Prezzo Att.': prezzo_corrente,
                 'Valore Totale': valore_totale,
-                'Costo Totale': costo_totale_assoluto,
+                'Costo Totale': costo_totale,
                 'P&L €': guadagno,
                 'P&L %': guadagno_pct,
                 'Asset Class': asset_class
@@ -171,6 +182,7 @@ def get_portfolio_metrics():
         import traceback
         traceback.print_exc()
         return None, pd.DataFrame()
+
 
 # =================== CALCOLO LIQUITIDA'====================
 
