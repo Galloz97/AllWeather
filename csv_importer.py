@@ -87,9 +87,21 @@ def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     non_mappate = 0
 
     def clean(val):
-        if pd.isna(val) or val == "":
+        if pd.isna(val) or val == "" or val is None:
             return None
-        return float(str(val).replace(",", ".").replace("€", "").strip())
+        # Se arriva una lista o qualsiasi cosa non-str, la riunisco in stringa
+        if isinstance(val, list):
+            val = ".".join([str(x) for x in val])
+        elif isinstance(val, tuple):
+            val = ".".join([str(x) for x in val])
+        elif isinstance(val, (float, int)):
+            return float(val)
+        val = str(val).replace("€", "").replace(" ", "").replace(".", "").replace(",", ".").strip()
+        try:
+            return float(val)
+        except Exception:
+            return None
+
 
     def parse_date(x):
         try:
