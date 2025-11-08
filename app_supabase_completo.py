@@ -739,13 +739,25 @@ def page_analisi_portafoglio():
     
     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
+   with col1:
         # Calcola volatilità solo per asset reali (non liquidità)
         volatilities = []
         for ticker in df_analysis['Ticker']:
-            vol = calculate_volatility(ticker)
-            if vol and vol > 0:
-                volatilities.append(vol)
+            try:
+                vol = calculate_volatility(ticker)
+                # Converti a float e verifica che sia valido
+                if vol is not None and not np.isnan(float(vol)) and float(vol) > 0:
+                    volatilities.append(float(vol))
+            except Exception as e:
+                print(f"Errore calcolo volatilità per {ticker}: {e}")
+                continue
+    
+    if volatilities:
+        avg_vol = np.mean(volatilities)
+        st.metric("Volatilità Annualizzata", f"{avg_vol*100:.2f}%")
+    else:
+        st.metric("Volatilità Annualizzata", "N/A")
+
         
         if volatilities:
             avg_vol = np.mean(volatilities)
@@ -754,18 +766,37 @@ def page_analisi_portafoglio():
             st.metric("Volatilità Annualizzata", "N/A")
     
     with col2:
-        if volatilities:
-            sharpe = calculate_sharpe_ratio(df_analysis, risk_free_rate)
-            st.metric("Sharpe Ratio", f"{sharpe:.3f}")
-        else:
+        try:
+            if volatilities:
+                sharpe = calculate_sharpe_ratio(df_analysis, risk_free_rate)
+                if sharpe is not None and not np.isnan(float(sharpe)):
+                    st.metric("Sharpe Ratio", f"{float(sharpe):.3f}")
+                else:
+                    st.metric("Sharpe Ratio", "N/A")
+            else:
+                st.metric("Sharpe Ratio", "N/A")
+        except Exception as e:
+            print(f"Errore calcolo Sharpe Ratio: {e}")
             st.metric("Sharpe Ratio", "N/A")
+
     
     with col3:
         max_dds = []
         for ticker in df_analysis['Ticker']:
-            dd = calculate_max_drawdown(ticker)
-            if dd and not np.isnan(dd):
-                max_dds.append(dd)
+            try:
+                dd = calculate_max_drawdown(ticker)
+                if dd is not None and not np.isnan(float(dd)):
+                    max_dds.append(float(dd))
+            except Exception as e:
+                print(f"Errore calcolo drawdown per {ticker}: {e}")
+                continue
+    
+    if max_dds:
+        avg_dd = np.mean(max_dds)
+        st.metric("Max Drawdown", f"{avg_dd*100:.2f}%")
+    else:
+        st.metric("Max Drawdown", "N/A")
+
         
         if max_dds:
             avg_dd = np.mean(max_dds)
@@ -776,15 +807,20 @@ def page_analisi_portafoglio():
     with col4:
         ulcers = []
         for ticker in df_analysis['Ticker']:
-            ulc = calculate_ulcer_index(ticker)
-            if ulc and not np.isnan(ulc):
-                ulcers.append(ulc)
+            try:
+                ulc = calculate_ulcer_index(ticker)
+                if ulc is not None and not np.isnan(float(ulc)):
+                    ulcers.append(float(ulc))
+            except Exception as e:
+                print(f"Errore calcolo Ulcer Index per {ticker}: {e}")
+                continue
         
         if ulcers:
             avg_ulcer = np.mean(ulcers)
             st.metric("Ulcer Index", f"{avg_ulcer:.2f}%")
         else:
             st.metric("Ulcer Index", "N/A")
+
     
     st.divider()
     
