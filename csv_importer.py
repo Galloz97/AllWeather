@@ -67,144 +67,111 @@ def get_ticker_mapping(ticker_bit):
 
 def process_csv(csv_file_path, user_id: str, supabase_client: Client):
     """Processa il CSV e importa le transazioni su Supabase"""
-    
-    # Leggi il CSV
+    # Leggi CSV
     df = pd.read_csv(csv_file_path, sep=",")
-    
-    # Rinomina colonne (rimuovi spazi e caratteri speciali)
     df.columns = [col.strip().lower() for col in df.columns]
-    
-    # Mappa colonne
-    column_map = {
-        'inserisci la data dell\'operazione': 'data',
-        'inserisci l\'operazione': 'tipo',
-        'inserisci il ticket dello strumento': 'ticker',
-        'inserisci la quantità': 'quantita',
-        'inserisci il pmc': 'prezzo_unitario',
-        'inserisci le commissioni': 'commissioni',
-        'totale': 'totale'
-    }
-    
-    df = df.rename(columns=column_map)
-    
-    # Filtra operazioni valide (Buy, Sell, Bonifico, Prelievo, Imposta)
-    operazioni_valide = ['Buy', 'Sell', 'Bonifico', 'Prelievo', 'Imposta']
-    df = df[df['tipo'].isin(operazioni_valide)]
 
-    
-    # Pulisci dati
-    df['data'] = df['data'].apply(parse_date)
-    df['quantita'] = df['quantita'].apply(clean_csv_value)
-    df['prezzo_unitario'] = df['prezzo_unitario'].apply(clean_csv_value)
-    df['commissioni'] = df['commissioni'].apply(clean_csv_value)
-    df['commissioni'] = df['commissioni'].fillna(0)
-    
-    # Filtra righe con ticker validi
-    df = df[df['ticker'].notna()]
-    
-    # Converti ticker
-    df['ticker_yahoo'] = df['ticker'].apply(get_ticker_mapping)
-    
-    # Rimuovi righe senza ticker mapping
-    df_valide = df[df['ticker_yahoo'].notna()].copy()
-    df_non_mappate = df[df['ticker_yahoo'].isna()].copy()
-    
+    column_map = {
+        "inserisci la data dell'operazione": "data",
+        "inserisci l'operazione": "tipo",
+        "inserisci il ticket dello strumento": "ticker",
+        "inserisci la quantità": "quantita",
+        "inserisci il pmc": "prezzo_unitario",
+        "inserisci le commissioni": "commissioni",
+        "totale": "totale"
+    }
+    df = df.rename(columns=column_map)
+
     transazioni_importate = 0
     errori = []
-    
-    # Importa transazioni valide
-    for idx, row in df_valide.iterrows():
-        try:
-            # Gestione speciale per Bonifico, Prelievo, Imposta
-            if row['tipo'] in ['Bonifico', 'Deposito']:
-                # Deposito liquidità
-                ticker_finale = 'LIQUIDITA'
-                tipo_finale = 'Deposit'
-                totale = clean_csv_value(row.get('totale', 0))
-                quantita_finale = abs(totale) if totale else 0
-                prezzo_finale = 1.0
-                importo_finale = quantita_finale
-                commissioni_finale = 0
-                note_finale = "Deposito liquidità"
-                
-            elif row['tipo'] == 'Prelievo':
-                # Prelievo liquidità
-                ticker_finale = 'LIQUIDITA'
-                tipo_finale = 'Withdrawal'
-                totale = clean_csv_value(row.get('totale', 0))
-                quantita_finale = -abs(totale) if totale else 0
-                prezzo_finale = 1.0
-                importo_finale = quantita_finale
-                commissioni_finale = 0
-                note_finale = "Prelievo liquidità"
-                
-            elif row['tipo'] == 'Imposta':
-                # Imposta (sottrae dalla liquidità)
-                ticker_finale = 'LIQUIDITA'
-                tipo_finale = 'Tax'
-                totale = clean_csv_value(row.get('totale', 0))
-                quantita_finale = -abs(totale) if totale else 0
-                prezzo_finale = 1.0
-                importo_finale = quantita_finale
-                commissioni_finale = 0
-                note_finale = "Imposta/Tassa"
-                
-            else:
-                # Buy o Sell normale
-                if pd.isna(row['data']) or pd.isna(row['quantita']) or pd.isna(row['prezzo_unitario']):
-                    continue
-                
-                ticker_finale = row['ticker_yahoo']
-                tipo_finale = row['tipo']
-                quantita_finale = float(row['quantita'])
-                prezzo_finale = float(row['prezzo_unitario'])
-                importo_finale = quantita_finale * prezzo_finale
-                commissioni_finale = float(row['commissioni']) if row['commissioni'] else 0
-                note_finale = f"Importato da CSV - {row['ticker']}"
+    non_mappate = 0
 
+    def clean(val):
+        if pd.isna(val) or val == "":
+            return None
+        return float(str(val).replace(",", ".").replace("€", "").strip())
+
+    def parse_date(x):
+        try:
+            return pd.to_datetime(x, format="%d/%m/%Y").strftime("%Y-%m-%d")
+        except:
+            return None
+
+    for idx, row in df.iterrows():
+        tipo = row.get("tipo", "").strip()
+        data = parse_date(row.get("data", ""))
+        ticker = str(row.get("ticker", "")).strip()
+        quantita = clean(row.get("quantita", None))
+        pmc = clean(row.get("prezzo_unitario", None))
+        commissioni = clean(row.get("commissioni", None)) or 0
+        totale = clean(row.get("totale", None))
+        note = ""
+
+        # Gestione LIQUIDITA'
+        if tipo in ["Bonifico", "Deposito"]:
+            ticker_finale = "LIQUIDITA"
+            tipo_finale = "Deposit"
+            quantita_finale = abs(totale) if totale else 0
+            prezzo_finale = 1.0
+            importo_finale = quantita_finale
+            note = "Deposito di liquidità"
+        elif tipo in ["Prelievo"]:
+            ticker_finale = "LIQUIDITA"
+            tipo_finale = "Withdrawal"
+            quantita_finale = -abs(totale) if totale else 0
+            prezzo_finale = 1.0
+            importo_finale = quantita_finale
+            note = "Prelievo di liquidità"
+        elif tipo == "Imposta":
+            ticker_finale = "LIQUIDITA"
+            tipo_finale = "Tax"
+            quantita_finale = -abs(totale) if totale else 0
+            prezzo_finale = 1.0
+            importo_finale = quantita_finale
+            note = "Uscita imposta/tassa"
+        # Movimenti titoli normali
+        elif tipo in ["Buy", "Sell"]:
+            # Ticker mapping per Borsa Italiana → Yahoo Finance
+            if isinstance(ticker, str) and ticker.startswith("BIT:"):
+                ticker_finale = TICKER_MAPPING.get(ticker, ticker.replace("BIT:", "") + ".MI")
+            else:
+                non_mappate += 1
+                continue  # Skip se non troviamo mapping
+            tipo_finale = tipo
+            if quantita is None:
+                non_mappate += 1
+                continue
+            quantita_finale = quantita if tipo == "Buy" else -abs(quantita)
+            prezzo_finale = pmc
+            importo_finale = quantita * pmc if quantita is not None and pmc is not None else totale or 0
+            note = f"Importato da CSV: {ticker}"
+        else:
+            non_mappate += 1
+            continue
+
+        try:
             response = supabase_client.table("transazioni").insert({
                 "user_id": user_id,
-                "data": row['data'],
+                "data": data,
                 "ticker": ticker_finale,
                 "tipo": tipo_finale,
                 "quantita": quantita_finale,
                 "prezzo_unitario": prezzo_finale,
                 "importo": importo_finale,
-                "commissioni": commissioni_finale,
-                "note": note_finale,
+                "commissioni": commissioni,
+                "note": note,
                 "created_at": datetime.now().isoformat()
             }).execute()
-        
             transazioni_importate += 1
-            print(f"✓ {row['data']} | {tipo_finale} | {ticker_finale} | {quantita_finale}")
-        
         except Exception as e:
             errori.append(f"Errore riga {idx}: {str(e)}")
-            print(f"✗ Errore riga {idx}: {e}")
 
-    
-    # Report
-    print("\n" + "="*60)
-    print("REPORT IMPORTAZIONE CSV")
-    print("="*60)
-    print(f"✓ Transazioni importate: {transazioni_importate}")
-    print(f"✗ Errori: {len(errori)}")
-    
-    if df_non_mappate.shape[0] > 0:
-        print(f"\n⚠️ Ticker non mappati ({df_non_mappate.shape[0]}):")
-        for ticker_non_mappato in df_non_mappate['ticker'].unique():
-            print(f"  - {ticker_non_mappato}")
-    
-    if errori:
-        print("\nErrori:")
-        for errore in errori[:5]:
-            print(f"  - {errore}")
-    
     return {
         'importate': transazioni_importate,
         'errori': len(errori),
-        'non_mappate': df_non_mappate.shape[0]
+        'non_mappate': non_mappate
     }
+
 
 # ==================== STREAMLIT UI ====================
 
