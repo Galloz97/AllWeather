@@ -43,8 +43,11 @@ user_id = st.session_state.user.id
 
 # =================== CONFIGURAZIONI IN SUPABASE ==========
 def set_config(self, user_id, key, value):
+    """
+    Salva o aggiorna una configurazione usando la sintassi corretta
+    """
     try:
-        # Prima prova UPDATE
+        # Prima prova a fare UPDATE
         response = (
             self.client
             .table("configurazioni")
@@ -54,7 +57,8 @@ def set_config(self, user_id, key, value):
             .execute()
         )
         
-        # Se UPDATE non ha modificato nulla, fai INSERT
+        # Se l'UPDATE non ha modificato nulla (response.data è vuoto),
+        # significa che il record non esiste, quindi fai INSERT
         if not response.data:
             response = (
                 self.client
@@ -70,8 +74,8 @@ def set_config(self, user_id, key, value):
         return response
         
     except Exception as e:
-        st.error(f"Errore set_config: {str(e)}")
-        raise
+        raise Exception(f"Errore set_config per '{key}': {str(e)}")
+
 
 
 # ==================== UTILITY FUNCTIONS ====================
@@ -1948,11 +1952,9 @@ def page_configurazione():
     
     # Bottone Salva
     if st.button("💾 Salva Configurazione", type="primary"):
-        # Contatore per tracciare successi e fallimenti
         success_count = 0
-        total_count = 0
+        failed_params = []
         
-        # Lista di configurazioni da salvare
         configs = [
             ("tasso_risk_free", str(tasso_risk_free / 100)),
             ("inflazione", str(inflazione / 100)),
@@ -1968,19 +1970,40 @@ def page_configurazione():
             ("spread_credit_lombard", str(spread_lombard / 100))
         ]
         
-        # Salva ogni configurazione con gestione errori individuale
         for key, value in configs:
-            total_count += 1
             try:
-                supabase.set_config(user_id, key, value)
+                # Usa la sintassi corretta: update().eq().execute()
+                response = (
+                    supabase.client
+                    .table("configurazioni")
+                    .update({"config_value": value})
+                    .eq("user_id", user_id)
+                    .eq("config_key", key)
+                    .execute()
+                )
+                
+                # Se non ha aggiornato nulla, inserisci nuovo record
+                if not response.data:
+                    response = (
+                        supabase.client
+                        .table("configurazioni")
+                        .insert({
+                            "user_id": user_id,
+                            "config_key": key,
+                            "config_value": value
+                        })
+                        .execute()
+                    )
+                
                 success_count += 1
+                
             except Exception as e:
-                # Log dell'errore senza interrompere il ciclo
-                st.warning(f"⚠️ Errore nel salvataggio di '{key}': {str(e)}")
-                continue  # Continua con il prossimo parametro
+                failed_params.append(key)
+                st.warning(f"⚠️ Errore salvando '{key}': {str(e)}")
+                continue
         
-        # Feedback finale all'utente
-        if success_count == total_count:
+        # Feedback finale
+        if success_count == len(configs):
             st.success("✅ Configurazione salvata completamente!")
 
             # Mostra riepilogo
@@ -2009,10 +2032,11 @@ def page_configurazione():
                 st.write(f"• Spread Lombard: {spread_lombard}% (salvato: {spread_lombard/100:.4f})")
                 st.write(f"• Costo totale leva: {tasso_totale_leva:.2f}%")
 
+
         elif success_count > 0:
-            st.warning(f"⚠️ Salvati {success_count}/{total_count} parametri. Controlla gli errori sopra.")
+            st.warning(f"⚠️ Salvati {success_count}/{len(configs)} parametri")
         else:
-            st.error("❌ Nessun parametro salvato. Verifica la connessione al database.")
+            st.error("❌ Nessun parametro salvato")
 
     st.success("✓ Tutte le configurazioni vengono salvate automaticamente su Supabase!")
 
