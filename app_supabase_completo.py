@@ -1146,7 +1146,7 @@ def page_analisi_portafoglio():
     with col2:
         n_simulations = st.select_slider(
             "Numero di iterazioni",
-            options=[100, 500, 1000, 2500, 5000, 10000],
+            options=[100, 500, 1000, 2500],
             value=1000,
             help="Più iterazioni = risultati più accurati"
         )
@@ -1161,7 +1161,7 @@ def page_analisi_portafoglio():
             "Versamento mensile (€)",
             min_value=0,
             max_value=100000,
-            value=0,
+            value=200,
             step=100,
             help="Importo da versare ogni mese"
         )
@@ -1171,9 +1171,9 @@ def page_analisi_portafoglio():
             "Versamento annuale (€)",
             min_value=0,
             max_value=1000000,
-            value=0,
-            step=1000,
-            help="Importo da versare ogni anno (es. bonus, 13a)"
+            value=500,
+            step=100,
+            help="Importo da versare ogni anno"
         )
     
     with col3:
