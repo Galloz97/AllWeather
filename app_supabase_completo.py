@@ -44,29 +44,28 @@ user_id = st.session_state.user.id
 # =================== CONFIGURAZIONI IN SUPABASE ==========
 def set_config(self, user_id, key, value):
     """
-    Salva o aggiorna una configurazione usando la sintassi corretta
+    Salva o aggiorna configurazione usando i nomi colonne corretti
     """
     try:
-        # Prima prova a fare UPDATE
+        # UPDATE con i nomi colonne corretti
         response = (
             self.client
             .table("configurazioni")
-            .update({"config_value": value})
+            .update({"valore": value})  # CAMBIATO: valore invece di config_value
             .eq("user_id", user_id)
-            .eq("config_key", key)
+            .eq("chiave", key)  # CAMBIATO: chiave invece di config_key
             .execute()
         )
         
-        # Se l'UPDATE non ha modificato nulla (response.data è vuoto),
-        # significa che il record non esiste, quindi fai INSERT
+        # Se non ha aggiornato nulla, inserisci nuovo record
         if not response.data:
             response = (
                 self.client
                 .table("configurazioni")
                 .insert({
                     "user_id": user_id,
-                    "config_key": key,
-                    "config_value": value
+                    "chiave": key,  # CAMBIATO
+                    "valore": value  # CAMBIATO
                 })
                 .execute()
             )
@@ -75,8 +74,6 @@ def set_config(self, user_id, key, value):
         
     except Exception as e:
         raise Exception(f"Errore set_config per '{key}': {str(e)}")
-
-
 
 # ==================== UTILITY FUNCTIONS ====================
 
@@ -1976,9 +1973,9 @@ def page_configurazione():
                 response = (
                     supabase.client
                     .table("configurazione")
-                    .update({"config_value": value})
+                    .update({"valore": value})
                     .eq("user_id", user_id)
-                    .eq("config_key", key)
+                    .eq("chiave", key)
                     .execute()
                 )
                 
@@ -1989,8 +1986,8 @@ def page_configurazione():
                         .table("configurazione")
                         .insert({
                             "user_id": user_id,
-                            "config_key": key,
-                            "config_value": value
+                            "chiave": key,
+                            "valore": value
                         })
                         .execute()
                     )
