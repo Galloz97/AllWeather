@@ -23,6 +23,25 @@ from supabase_manager import (
     init_supabase_auth
 )
 
+# ==================== CONFIGURAZIONE ====================
+
+st.set_page_config(
+    page_title="Portfolio Monitor",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==================== AUTENTICAZIONE ====================
+
+check_authentication()
+init_supabase_auth()
+
+supabase = st.session_state.supabase
+user_id = st.session_state.user.id
+
+
+# =================== CONFIGURAZIONI IN SUPABASE ==========
 def set_config(self, user_id, key, value):
     try:
         # Prima prova UPDATE
@@ -54,23 +73,6 @@ def set_config(self, user_id, key, value):
         st.error(f"Errore set_config: {str(e)}")
         raise
 
-
-# ==================== CONFIGURAZIONE ====================
-
-st.set_page_config(
-    page_title="Portfolio Monitor",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# ==================== AUTENTICAZIONE ====================
-
-check_authentication()
-init_supabase_auth()
-
-supabase = st.session_state.supabase
-user_id = st.session_state.user.id
 
 # ==================== UTILITY FUNCTIONS ====================
 
