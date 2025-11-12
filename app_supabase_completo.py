@@ -497,85 +497,42 @@ def monte_carlo_simulation(df, n_simulations=1000, days=252, monthly_contributio
         return np.array([[]]), 0
 
 def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
-    """
-    Simulazione Bootstrap (non parametrica) con versamenti periodici
+    tickers = df['Ticker'].tolist()
+    weights = (df['Peso %'] / 100).values
+    initial_value = df['Valore Totale'].sum()
     
-    Args:
-        df: DataFrame portafoglio
-        n_simulations: Numero iterazioni
-        days: Giorni di simulazione
-        monthly_contribution: Versamento mensile (€)
-        annual_contribution: Versamento annuale (€)
-    """
-    try:
-        tickers = df['Ticker'].tolist()
-        weights = (df['Peso %'] / 100).values
-        initial_value = df['Valore Totale'].sum()
-        
-        print(f"📥 Bootstrap: Download dati storici per {len(tickers)} ticker...")
-        
-        # Scarica rendimenti storici
-        historical_returns = {}
-        
-        for ticker in tickers:
-            try:
-                close_prices = get_stock_data_cached(ticker, period="2y")  # 2 anni per più dati
-                
-                if close_prices is not None and len(close_prices) > 50:
-                    daily_returns = close_prices.pct_change().dropna()
-                    historical_returns[ticker] = daily_returns.values
-                else:
-                    # Fallback: rendimenti neutri
-                    historical_returns[ticker] = np.array([0.0005] * 252)
-                    
-            except Exception as e:
-                print(f"Errore {ticker}: {e}")
-                historical_returns[ticker] = np.array([0.0005] * 252)
-        
-        print(f"🎲 Bootstrap con versamenti: {monthly_contribution}€/mese, {annual_contribution}€/anno")
-        
-        # Calcola versamenti per ogni giorno
-        contributions_schedule = np.zeros(days)
-        
-        if monthly_contribution > 0:
-            for day in range(0, days, 21):  # ~12 volte/anno
-                contributions_schedule[day] = monthly_contribution
-        
-        if annual_contribution > 0:
-            for day in range(0, days, 252):
-                contributions_schedule[day] += annual_contribution
-        
-        # Simulazioni Bootstrap
-        simulations = np.zeros((n_simulations, days))
-        
-        np.random.seed(42)
-        
-        for sim in range(n_simulations):
-            portfolio_value = initial_value
-            
-            for day in range(days):
-                # Aggiungi versamento
-                portfolio_value += contributions_schedule[day]
-                
-                # BOOTSTRAP: Ricampiona rendimento da dati storici
-                portfolio_return = 0.0
-                
-                for ticker, weight in zip(tickers, weights):
-                    # Estrai casualmente un rendimento storico
-                    historical = historical_returns[ticker]
-                    sampled_return = np.random.choice(historical)
-                    portfolio_return += weight * sampled_return
-                
-                # Applica rendimento
-                portfolio_value *= (1 + portfolio_return)
-                
-                simulations[sim, day] = portfolio_value
-        
-        total_contributions = np.sum(contributions_schedule)
-        
-        print(f"✅ Bootstrap completato! Capitale versato: €{total_contributions:,.0f}")
-        
-        return simulations, total_contributions
+    historical_returns = {}
+    for ticker in tickers:
+        close_prices = get_stock_data_cached(ticker, period="2y")
+        daily_returns = close_prices.pct_change().dropna() if close_prices is not None else []
+        if len(daily_returns) < 30:
+            daily_returns = np.array([0.0005] * 252)
+        else:
+            daily_returns = daily_returns.values
+        historical_returns[ticker] = daily_returns
+
+    contributions_schedule = np.zeros(days)
+    for day in range(0, days, 21):
+        contributions_schedule[day] = monthly_contribution
+    for day in range(0, days, 252):
+        contributions_schedule[day] += annual_contribution
+
+    simulations = np.zeros((n_simulations, days))
+    np.random.seed(42)
+
+    for sim in range(n_simulations):
+        portfolio_value = initial_value
+        for day in range(days):
+            portfolio_value += contributions_schedule[day]
+            portfolio_return = 0.0
+            for ticker, weight in zip(tickers, weights):
+                sampled_return = np.random.choice(historical_returns[ticker])
+                portfolio_return += weight * sampled_return
+            portfolio_value *= (1 + portfolio_return)
+            simulations[sim, day] = portfolio_value
+
+    total_contributions = np.sum(contributions_schedule)
+    return simulations, total_contributions
         
     except Exception as e:
         print(f"Errore simulazione Bootstrap: {e}")
