@@ -23,64 +23,35 @@ from supabase_manager import (
     init_supabase_auth
 )
 
-# =================== CONFIG SUPABASE ====================
-
 def set_config(self, user_id, key, value):
-    """
-    Debug completo del salvataggio configurazioni
-    """
-    print(f"\n=== DEBUG set_config ===")
-    print(f"user_id: {user_id}")
-    print(f"config_key: {key}")
-    print(f"config_value: {value}")
-    print(f"Tipo user_id: {type(user_id)}")
-    
     try:
-        # Verifica che user_id non sia None
-        if not user_id:
-            raise ValueError("user_id è None o vuoto!")
-        
-        # Prepara i dati
-        data = {
-            "user_id": str(user_id),  # Forza conversione a stringa
-            "config_key": key,
-            "config_value": value
-        }
-        print(f"Data preparata: {data}")
-        
-        # Esegui upsert
+        # Prima prova UPDATE
         response = (
             self.client
             .table("configurazioni")
-            .upsert(data, on_conflict="user_id,config_key")
-            .execute()
-        )
-        
-        print(f"Response data: {response.data}")
-        print(f"Response error: {response.error if hasattr(response, 'error') else 'No error attr'}")
-        print(f"Response count: {response.count if hasattr(response, 'count') else 'No count attr'}")
-        
-        # Verifica se i dati sono stati effettivamente salvati
-        verify = (
-            self.client
-            .table("configurazioni")
-            .select("*")
-            .eq("user_id", str(user_id))
+            .update({"config_value": value})
+            .eq("user_id", user_id)
             .eq("config_key", key)
             .execute()
         )
-        print(f"Verifica dopo upsert: {verify.data}")
         
-        if not verify.data:
-            raise Exception("DATI NON TROVATI DOPO L'UPSERT!")
+        # Se UPDATE non ha modificato nulla, fai INSERT
+        if not response.data:
+            response = (
+                self.client
+                .table("configurazioni")
+                .insert({
+                    "user_id": user_id,
+                    "config_key": key,
+                    "config_value": value
+                })
+                .execute()
+            )
         
         return response
         
     except Exception as e:
-        print(f"ERRORE in set_config: {str(e)}")
-        print(f"Tipo errore: {type(e)}")
-        import traceback
-        traceback.print_exc()
+        st.error(f"Errore set_config: {str(e)}")
         raise
 
 
