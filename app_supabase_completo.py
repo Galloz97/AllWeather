@@ -1483,7 +1483,7 @@ def page_simulazione_fire():
         portfolio_value = current_value
         monthly_rate = cagr_accumulo / 100 / 12
         accumulation_data = []
-        max_years = 50
+        max_years = 60-fire_age
         fire_reached = False
 
         # Fase Accumulo
