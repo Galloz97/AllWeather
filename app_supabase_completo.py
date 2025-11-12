@@ -536,14 +536,6 @@ def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=
 
     total_contributions = np.sum(contributions_schedule)
     return simulations, total_contributions
-        
-    except Exception as e:
-        print(f"Errore simulazione Bootstrap: {e}")
-        import traceback
-        traceback.print_exc()
-        return np.array([[]]), 0
-
-
 
 # ==================== PAGINA MONITORAGGIO ====================
 
