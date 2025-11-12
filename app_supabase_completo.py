@@ -3,7 +3,7 @@ Portfolio Monitor - Applicazione Streamlit completa multi-utente con Supabase
 Versione con tutte le funzionalità: Monitoraggio, Analisi avanzata, FIRE, Leva, Monte Carlo
 Pronto per GitHub e Streamlit Cloud
 """
-
+ 
 import streamlit as st
 import pandas as pd
 import numpy as np
