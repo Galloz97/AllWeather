@@ -1563,7 +1563,7 @@ def page_simulazione_fire():
             hovertemplate='Anno: %{x} Valore: €%{y:,.0f}'
         ))
 
-        if withdrawal:
+        if withdrawal_data:
             fig.add_trace(go.Scatter(
                 x=withdrawal_years_list,
                 y=withdrawal_values,
