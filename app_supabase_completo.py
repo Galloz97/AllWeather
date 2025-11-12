@@ -1914,53 +1914,71 @@ def page_configurazione():
     
     # Bottone Salva
     if st.button("💾 Salva Configurazione", type="primary"):
-        # Salva parametri generali
-        supabase.set_config(user_id, "tasso_risk_free", str(tasso_risk_free / 100))
-        supabase.set_config(user_id, "inflazione", str(inflazione / 100))
-        supabase.set_config(user_id, "orizzonte_temporale", str(orizzonte_temporale))
+        # Contatore per tracciare successi e fallimenti
+        success_count = 0
+        total_count = 0
         
-        # Salva PAC
-        supabase.set_config(user_id, "versamento_mensile", str(versamento_mensile))
-        supabase.set_config(user_id, "versamento_annuale", str(versamento_annuale))
+        # Lista di configurazioni da salvare
+        configs = [
+            ("tasso_risk_free", str(tasso_risk_free / 100)),
+            ("inflazione", str(inflazione / 100)),
+            ("orizzonte_temporale", str(orizzonte_temporale)),
+            ("versamento_mensile", str(versamento_mensile)),
+            ("versamento_annuale", str(versamento_annuale)),
+            ("eta_attuale", str(eta_attuale)),
+            ("spese_annue_fire", str(spese_annue_fire)),
+            ("tasso_prelievo_fire", str(tasso_prelievo_fire)),
+            ("cagr_accumulo", str(cagr_accumulo)),
+            ("cagr_prelievi", str(cagr_prelievi)),
+            ("euribor_3m", str(euribor_3m / 100)),
+            ("spread_credit_lombard", str(spread_lombard / 100))
+        ]
         
-        # Salva FIRE
-        supabase.set_config(user_id, "eta_attuale", str(eta_attuale))
-        supabase.set_config(user_id, "spese_annue_fire", str(spese_annue_fire))
-        supabase.set_config(user_id, "tasso_prelievo_fire", str(tasso_prelievo_fire))
-        supabase.set_config(user_id, "cagr_accumulo", str(cagr_accumulo))
-        supabase.set_config(user_id, "cagr_prelievi", str(cagr_prelievi))
+        # Salva ogni configurazione con gestione errori individuale
+        for key, value in configs:
+            total_count += 1
+            try:
+                supabase.set_config(user_id, key, value)
+                success_count += 1
+            except Exception as e:
+                # Log dell'errore senza interrompere il ciclo
+                st.warning(f"⚠️ Errore nel salvataggio di '{key}': {str(e)}")
+                continue  # Continua con il prossimo parametro
         
-        # NUOVO: Salva parametri leva come DECIMALI
-        supabase.set_config(user_id, "euribor_3m", str(euribor_3m / 100))
-        supabase.set_config(user_id, "spread_credit_lombard", str(spread_lombard / 100))
-        
-        st.success("✅ Configurazione salvata!")
-        
-        # Mostra riepilogo
-        with st.expander("📋 Riepilogo valori salvati"):
-            st.write("**Parametri Generali:**")
-            st.write(f"• Tasso Risk-Free: {tasso_risk_free}% (salvato: {tasso_risk_free/100:.4f})")
-            st.write(f"• Inflazione: {inflazione}% (salvato: {inflazione/100:.4f})")
-            st.write(f"• Orizzonte: {orizzonte_temporale} anni")
-            
-            st.write("")
-            st.write("**Parametri PAC:**")
-            st.write(f"• Versamento mensile: €{versamento_mensile:,.0f}")
-            st.write(f"• Versamento annuale: €{versamento_annuale:,.0f}")
-            
-            st.write("")
-            st.write("**Parametri FIRE:**")
-            st.write(f"• Età attuale: {eta_attuale} anni")
-            st.write(f"• Spese annue: €{spese_annue_fire:,.0f}")
-            st.write(f"• Tasso prelievo: {tasso_prelievo_fire}%")
-            st.write(f"• CAGR accumulo: {cagr_accumulo}%")
-            st.write(f"• CAGR prelievi: {cagr_prelievi}%")
-            
-            st.write("")
-            st.write("**Parametri Leva:**")
-            st.write(f"• Euribor 3M: {euribor_3m}% (salvato: {euribor_3m/100:.4f})")
-            st.write(f"• Spread Lombard: {spread_lombard}% (salvato: {spread_lombard/100:.4f})")
-            st.write(f"• Costo totale leva: {tasso_totale_leva:.2f}%")
+        # Feedback finale all'utente
+        if success_count == total_count:
+            st.success("✅ Configurazione salvata completamente!")
+
+            # Mostra riepilogo
+            with st.expander("📋 Riepilogo valori salvati"):
+                st.write("**Parametri Generali:**")
+                st.write(f"• Tasso Risk-Free: {tasso_risk_free}% (salvato: {tasso_risk_free/100:.4f})")
+                st.write(f"• Inflazione: {inflazione}% (salvato: {inflazione/100:.4f})")
+                st.write(f"• Orizzonte: {orizzonte_temporale} anni")
+                
+                st.write("")
+                st.write("**Parametri PAC:**")
+                st.write(f"• Versamento mensile: €{versamento_mensile:,.0f}")
+                st.write(f"• Versamento annuale: €{versamento_annuale:,.0f}")
+                
+                st.write("")
+                st.write("**Parametri FIRE:**")
+                st.write(f"• Età attuale: {eta_attuale} anni")
+                st.write(f"• Spese annue: €{spese_annue_fire:,.0f}")
+                st.write(f"• Tasso prelievo: {tasso_prelievo_fire}%")
+                st.write(f"• CAGR accumulo: {cagr_accumulo}%")
+                st.write(f"• CAGR prelievi: {cagr_prelievi}%")
+                
+                st.write("")
+                st.write("**Parametri Leva:**")
+                st.write(f"• Euribor 3M: {euribor_3m}% (salvato: {euribor_3m/100:.4f})")
+                st.write(f"• Spread Lombard: {spread_lombard}% (salvato: {spread_lombard/100:.4f})")
+                st.write(f"• Costo totale leva: {tasso_totale_leva:.2f}%")
+
+        elif success_count > 0:
+            st.warning(f"⚠️ Salvati {success_count}/{total_count} parametri. Controlla gli errori sopra.")
+        else:
+            st.error("❌ Nessun parametro salvato. Verifica la connessione al database.")
 
     st.success("✓ Tutte le configurazioni vengono salvate automaticamente su Supabase!")
 
