@@ -1347,6 +1347,8 @@ def page_simulazione_fire():
         st.info("📭 Nessun dato portafoglio per simulazione FIRE")
         return
     
+    current_value = metrics['valore_totale']
+    
     # Helper per validare valori
     def safe_float(config_value, default, min_val=None, max_val=None):
         """Leggi e valida un valore float dalla config"""
