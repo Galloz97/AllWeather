@@ -496,6 +496,93 @@ def monte_carlo_simulation(df, n_simulations=1000, days=252, monthly_contributio
         traceback.print_exc()
         return np.array([[]]), 0
 
+def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
+    """
+    Simulazione Bootstrap (non parametrica) con versamenti periodici
+    
+    Args:
+        df: DataFrame portafoglio
+        n_simulations: Numero iterazioni
+        days: Giorni di simulazione
+        monthly_contribution: Versamento mensile (€)
+        annual_contribution: Versamento annuale (€)
+    """
+    try:
+        tickers = df['Ticker'].tolist()
+        weights = (df['Peso %'] / 100).values
+        initial_value = df['Valore Totale'].sum()
+        
+        print(f"📥 Bootstrap: Download dati storici per {len(tickers)} ticker...")
+        
+        # Scarica rendimenti storici
+        historical_returns = {}
+        
+        for ticker in tickers:
+            try:
+                close_prices = get_stock_data_cached(ticker, period="2y")  # 2 anni per più dati
+                
+                if close_prices is not None and len(close_prices) > 50:
+                    daily_returns = close_prices.pct_change().dropna()
+                    historical_returns[ticker] = daily_returns.values
+                else:
+                    # Fallback: rendimenti neutri
+                    historical_returns[ticker] = np.array([0.0005] * 252)
+                    
+            except Exception as e:
+                print(f"Errore {ticker}: {e}")
+                historical_returns[ticker] = np.array([0.0005] * 252)
+        
+        print(f"🎲 Bootstrap con versamenti: {monthly_contribution}€/mese, {annual_contribution}€/anno")
+        
+        # Calcola versamenti per ogni giorno
+        contributions_schedule = np.zeros(days)
+        
+        if monthly_contribution > 0:
+            for day in range(0, days, 21):  # ~12 volte/anno
+                contributions_schedule[day] = monthly_contribution
+        
+        if annual_contribution > 0:
+            for day in range(0, days, 252):
+                contributions_schedule[day] += annual_contribution
+        
+        # Simulazioni Bootstrap
+        simulations = np.zeros((n_simulations, days))
+        
+        np.random.seed(42)
+        
+        for sim in range(n_simulations):
+            portfolio_value = initial_value
+            
+            for day in range(days):
+                # Aggiungi versamento
+                portfolio_value += contributions_schedule[day]
+                
+                # BOOTSTRAP: Ricampiona rendimento da dati storici
+                portfolio_return = 0.0
+                
+                for ticker, weight in zip(tickers, weights):
+                    # Estrai casualmente un rendimento storico
+                    historical = historical_returns[ticker]
+                    sampled_return = np.random.choice(historical)
+                    portfolio_return += weight * sampled_return
+                
+                # Applica rendimento
+                portfolio_value *= (1 + portfolio_return)
+                
+                simulations[sim, day] = portfolio_value
+        
+        total_contributions = np.sum(contributions_schedule)
+        
+        print(f"✅ Bootstrap completato! Capitale versato: €{total_contributions:,.0f}")
+        
+        return simulations, total_contributions
+        
+    except Exception as e:
+        print(f"Errore simulazione Bootstrap: {e}")
+        import traceback
+        traceback.print_exc()
+        return np.array([[]]), 0
+
 
 
 # ==================== PAGINA MONITORAGGIO ====================
@@ -1046,10 +1133,10 @@ def page_analisi_portafoglio():
             st.info("Dati insufficienti per calcolare Relaxed Risk Parity")
     
     st.divider()
-    
-    # Simulazione Monte Carlo
-    st.subheader("🎲 Simulazione Monte Carlo con PAC")
-    st.info("📊 La simulazione usa i **pesi attuali del portafoglio** e include versamenti periodici")
+
+    # Simulazione Bootstrap
+    st.subheader("🎲 Simulazione Bootstrap")
+    st.info("📊 Simulazione basata su ricampionamento dei rendimenti storici reali (non parametrica)")
     
     # Controlli simulazione
     col1, col2 = st.columns(2)
@@ -1060,19 +1147,17 @@ def page_analisi_portafoglio():
             min_value=1,
             max_value=50,
             value=30,
-            step=1,
-            help="Seleziona per quanti anni simulare il portafoglio"
+            step=1
         )
     
     with col2:
         n_simulations = st.select_slider(
             "Numero di iterazioni",
             options=[100, 500, 1000, 2500, 5000, 10000],
-            value=1000,
-            help="Più iterazioni = risultati più accurati"
+            value=5000
         )
     
-    # NUOVO: Versamenti periodici
+    # Versamenti periodici
     st.subheader("💰 Piano di Accumulo Capitale (PAC)")
     
     col1, col2, col3 = st.columns(3)
@@ -1083,8 +1168,7 @@ def page_analisi_portafoglio():
             min_value=0,
             max_value=100000,
             value=0,
-            step=100,
-            help="Importo da versare ogni mese"
+            step=100
         )
     
     with col2:
@@ -1093,28 +1177,25 @@ def page_analisi_portafoglio():
             min_value=0,
             max_value=1000000,
             value=0,
-            step=1000,
-            help="Importo da versare ogni anno (es. bonus, 13a)"
+            step=1000
         )
     
     with col3:
-        # Calcola totale versamenti
         years_contributions = (monthly_contribution * 12 + annual_contribution) * n_years
         st.metric(
             "💵 Capitale versato totale",
-            format_currency(years_contributions),
-            help=f"Totale versamenti in {n_years} anni"
+            format_currency(years_contributions)
         )
     
     days = n_years * 252
     
     st.write(f"**Configurazione:** {n_simulations:,} simulazioni su **{n_years} anni** ({days} giorni)")
     
-    if st.button("🚀 Esegui Simulazione con PAC", type="primary"):
-        with st.spinner(f"Esecuzione {n_simulations:,} simulazioni..."):
+    if st.button("🚀 Esegui Simulazione Bootstrap", type="primary"):
+        with st.spinner(f"Esecuzione {n_simulations:,} simulazioni Bootstrap..."):
             try:
-                # Esegui simulazione con versamenti
-                simulations, total_contributed = monte_carlo_simulation(
+                # Esegui Bootstrap
+                simulations, total_contributed = bootstrap_simulation(
                     df_analysis, 
                     n_simulations=n_simulations, 
                     days=days,
@@ -1123,8 +1204,8 @@ def page_analisi_portafoglio():
                 )
                 
                 if simulations.size > 0:
-                    # Calcola percentili
-                    percentili = np.percentile(simulations, [50, 75, 90], axis=0)
+                    # Calcola percentili 5°, 75°, 95°
+                    percentili = np.percentile(simulations, [5, 75, 95], axis=0)
                     
                     # Asse X in anni
                     x_axis = np.arange(days) / 252
@@ -1132,37 +1213,37 @@ def page_analisi_portafoglio():
                     # Grafico
                     fig = go.Figure()
                     
-                    # Mediana
+                    # 5° Percentile (pessimistico)
                     fig.add_trace(go.Scatter(
                         x=x_axis,
                         y=percentili[0],
-                        name='Mediana (50°)',
+                        name='5° Percentile',
                         mode='lines',
-                        line=dict(color='blue', width=3),
+                        line=dict(color='red', width=2),
                         hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
                     ))
                     
-                    # 75°
+                    # 75° Percentile
                     fig.add_trace(go.Scatter(
                         x=x_axis,
                         y=percentili[1],
                         name='75° Percentile',
                         mode='lines',
+                        line=dict(color='blue', width=3),
+                        hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
+                    ))
+                    
+                    # 95° Percentile (ottimistico)
+                    fig.add_trace(go.Scatter(
+                        x=x_axis,
+                        y=percentili[2],
+                        name='95° Percentile',
+                        mode='lines',
                         line=dict(color='green', width=2),
                         hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
                     ))
                     
-                    # 90°
-                    fig.add_trace(go.Scatter(
-                        x=x_axis,
-                        y=percentili[2],
-                        name='90° Percentile',
-                        mode='lines',
-                        line=dict(color='darkgreen', width=2),
-                        hovertemplate='Anno: %{x:.1f}<br>Valore: €%{y:,.0f}<extra></extra>'
-                    ))
-                    
-                    # Area
+                    # Area tra 5° e 95°
                     fig.add_trace(go.Scatter(
                         x=x_axis, y=percentili[2],
                         fill=None, mode='lines',
@@ -1174,7 +1255,7 @@ def page_analisi_portafoglio():
                         x=x_axis, y=percentili[0],
                         fill='tonexty', mode='lines',
                         line=dict(width=0),
-                        fillcolor='rgba(0, 255, 0, 0.1)',
+                        fillcolor='rgba(0, 100, 255, 0.1)',
                         showlegend=False, hoverinfo='skip'
                     ))
                     
@@ -1183,7 +1264,7 @@ def page_analisi_portafoglio():
                         pac_info = f"<br><sub>Con PAC: {monthly_contribution}€/mese + {annual_contribution}€/anno</sub>"
                     
                     fig.update_layout(
-                        title=f"Simulazione Monte Carlo - {n_years} anni{pac_info}",
+                        title=f"Simulazione Bootstrap - {n_years} anni{pac_info}",
                         xaxis_title="Anni",
                         yaxis_title="Valore Portafoglio (€)",
                         hovermode='x unified',
@@ -1207,98 +1288,50 @@ def page_analisi_portafoglio():
                         st.metric("💵 Versato (PAC)", format_currency(total_contributed))
                     
                     with col3:
-                        median_final = np.percentile(final_values, 50)
-                        st.metric("📊 Mediana (50°)", format_currency(median_final))
+                        p5_final = np.percentile(final_values, 5)
+                        st.metric("📉 5° Percentile", format_currency(p5_final))
                     
                     with col4:
                         p75_final = np.percentile(final_values, 75)
-                        st.metric("📈 75° Percentile", format_currency(p75_final))
+                        st.metric("📊 75° Percentile", format_currency(p75_final))
                     
                     with col5:
-                        p90_final = np.percentile(final_values, 90)
-                        st.metric("🚀 90° Percentile", format_currency(p90_final))
+                        p95_final = np.percentile(final_values, 95)
+                        st.metric("📈 95° Percentile", format_currency(p95_final))
                     
                     st.divider()
                     
-                    # Rendimenti totali e CAGR
+                    # Rendimenti e CAGR
                     st.subheader("📈 Analisi Rendimenti")
                     
                     total_invested = initial_value + total_contributed
                     
                     col1, col2, col3 = st.columns(3)
                     
-                    # CAGR calcolato solo sul capitale iniziale (più realistico)
                     def calculate_cagr_on_initial(final_val, initial_val, contributions, years):
-                        """
-                        CAGR semplificato: considera solo capitale iniziale
-                        Questo dà un'idea del rendimento annuale composto
-                        """
                         if initial_val > 0:
-                            # Sottrai i versamenti dal valore finale per vedere solo la crescita
                             growth = final_val - contributions
                             return ((growth / initial_val) ** (1 / years) - 1) * 100
                         return 0
                     
-                    # Rendimento totale (quanto hai guadagnato rispetto a quanto investito)
-                    def calculate_total_return(final_val, total_invested):
-                        if total_invested > 0:
-                            return ((final_val - total_invested) / total_invested * 100)
-                        return 0
-                    
                     with col1:
-                        # Rendimento totale mediano
-                        median_total_return = calculate_total_return(median_final, total_invested)
-                        # Guadagno assoluto
-                        median_gain = median_final - total_invested
-                        
-                        st.metric(
-                            "💰 Scenario Mediano",
-                            format_currency(median_final),
-                            f"Guadagno: {format_currency(median_gain)}"
-                        )
-                        st.caption(f"Rendimento totale: {median_total_return:.1f}%")
-                    
-                    with col2:
-                        p75_total_return = calculate_total_return(p75_final, total_invested)
-                        p75_gain = p75_final - total_invested
-                        
-                        st.metric(
-                            "📈 Scenario 75°",
-                            format_currency(p75_final),
-                            f"Guadagno: {format_currency(p75_gain)}"
-                        )
-                        st.caption(f"Rendimento totale: {p75_total_return:.1f}%")
-                    
-                    with col3:
-                        p90_total_return = calculate_total_return(p90_final, total_invested)
-                        p90_gain = p90_final - total_invested
-                        
-                        st.metric(
-                            "🚀 Scenario 90°",
-                            format_currency(p90_final),
-                            f"Guadagno: {format_currency(p90_gain)}"
-                        )
-                        st.caption(f"Rendimento totale: {p90_total_return:.1f}%")
-                    
-                    st.divider()
-                    
-                    # CAGR - Tasso di crescita annuale composto
-                    st.subheader("📊 CAGR (Compound Annual Growth Rate)")
-                    st.caption("Rendimento annuale medio sul capitale iniziale (esclusi versamenti)")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        cagr_50 = calculate_cagr_on_initial(median_final, initial_value, total_contributed, n_years)
-                        st.metric("CAGR Mediano", f"{cagr_50:.2f}% /anno")
+                        cagr_5 = calculate_cagr_on_initial(p5_final, initial_value, total_contributed, n_years)
+                        st.metric("CAGR 5° (Pessimistico)", f"{cagr_5:.2f}% /anno")
                     
                     with col2:
                         cagr_75 = calculate_cagr_on_initial(p75_final, initial_value, total_contributed, n_years)
-                        st.metric("CAGR 75°", f"{cagr_75:.2f}% /anno")
+                        st.metric("🎯 CAGR 75° (Base)", f"{cagr_75:.2f}% /anno")
                     
                     with col3:
-                        cagr_90 = calculate_cagr_on_initial(p90_final, initial_value, total_contributed, n_years)
-                        st.metric("CAGR 90°", f"{cagr_90:.2f}% /anno")
+                        cagr_95 = calculate_cagr_on_initial(p95_final, initial_value, total_contributed, n_years)
+                        st.metric("CAGR 95° (Ottimistico)", f"{cagr_95:.2f}% /anno")
+                    
+                    # Salva CAGR per FIRE
+                    st.session_state['analysis_cagr_5'] = cagr_5
+                    st.session_state['analysis_cagr_75'] = cagr_75
+                    st.session_state['analysis_cagr_95'] = cagr_95
+                    st.session_state['analysis_years'] = n_years
+                    st.session_state['analysis_iterations'] = n_simulations
                     
                 else:
                     st.error("Errore: simulazione non ha prodotto risultati")
@@ -1307,10 +1340,7 @@ def page_analisi_portafoglio():
                 st.error(f"Errore durante la simulazione: {e}")
                 import traceback
                 st.code(traceback.format_exc())
-
-
-
-
+    
 
 # ==================== PAGINA SIMULAZIONE FIRE ====================
 
