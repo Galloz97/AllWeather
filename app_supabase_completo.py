@@ -496,7 +496,7 @@ def monte_carlo_simulation(df, n_simulations=1000, days=252, monthly_contributio
         traceback.print_exc()
         return np.array([[]]), 0
 
-def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
+def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=200, annual_contribution=1000):
     tickers = df['Ticker'].tolist()
     weights = (df['Peso %'] / 100).values
     initial_value = df['Valore Totale'].sum()
@@ -506,13 +506,32 @@ def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=
     
     historical_returns = {}
     for ticker in tickers:
-        close_prices = get_stock_data_cached(ticker, period="2y")
-        daily_returns = close_prices.pct_change().dropna() if close_prices is not None else []
-        if len(daily_returns) < 30:
-            daily_returns = np.array([0.0005] * 252)
+        close_prices = get_stock_data_cached(ticker, period="5y")
+        if close_prices is not None and not close_prices.empty:
+            # Se close_prices è DataFrame, estrai la colonna prezzi chiusura come Serie
+            if isinstance(close_prices, pd.DataFrame):
+                if 'Close' in close_prices.columns:
+                    close_series = close_prices['Close']
+                else:
+                    # Se è DataFrame senza 'Close', prendi la prima colonna
+                    close_series = close_prices.iloc[:, 0]
+            elif isinstance(close_prices, pd.Series):
+                close_series = close_prices
+            else:
+                close_series = None
+        
+            if close_series is not None:
+                daily_returns = close_series.pct_change().dropna()
+                if len(daily_returns) < 30:
+                    daily_returns_array = np.array([0.0005] * 252)
+                else:
+                    daily_returns_array = daily_returns.values
+            else:
+                daily_returns_array = np.array([0.0005] * 252)
         else:
-            daily_returns = daily_returns.values
-        historical_returns[ticker] = daily_returns
+            daily_returns_array = np.array([0.0005] * 252)
+        
+        historical_returns[ticker] = daily_returns_array
 
     contributions_schedule = np.zeros(days)
     for day in range(0, days, 21):
