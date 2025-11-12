@@ -1395,20 +1395,26 @@ def page_simulazione_fire():
     # Parametri FIRE
     st.subheader("💰 Parametri Simulazione")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        current_value = metrics['valore_totale']
-        st.metric("💼 Portafoglio Attuale", format_currency(current_value))
-    
-    with col2:
         monthly_contribution = st.number_input(
             "Versamento mensile (€)",
             min_value=0,
             max_value=50000,
-            value=int(versamento_mensile_default),
+            value=500,
             step=100,
-            help="Default dalla Configurazione"
+            help="Aggiungi capitale ogni mese"
+        )
+    
+    with col2:
+        annual_contribution_fire = st.number_input(
+            "Versamento annuale (€)",
+            min_value=0,
+            max_value=1000000,
+            value=0,
+            step=1000,
+            help="Aggiungi capitale una volta all’anno (es. bonus, 13a)"
         )
     
     with col3:
@@ -1416,9 +1422,19 @@ def page_simulazione_fire():
             "Spese annue desiderate (€)",
             min_value=0,
             max_value=500000,
-            value=int(spese_annue_default),
+            value=30000,
             step=1000,
-            help="Quanto vuoi spendere all'anno dopo FIRE"
+            help="Questa voce serve a valutare sostenibilità in FIRE. È il fabbisogno annuo da coprire con prelievi"
+        )
+    
+    with col4:
+        withdrawal_rate = st.number_input(
+            "Tasso Prelievo Annuo (%)",
+            min_value=1.0,
+            max_value=10.0,
+            value=4.0,
+            step=0.5,
+            help="Percentuale massima di patrimonio da prelevare ogni anno per essere sostenibili"
         )
     
     col1, col2, col3, col4 = st.columns(4)
@@ -1489,6 +1505,9 @@ def page_simulazione_fire():
         
         # Fase Accumulo
         for year in range(max_years):
+            
+            portfolio_value += annual_contribution_fire
+            
             for month in range(12):
                 portfolio_value = portfolio_value * (1 + monthly_rate) + monthly_contribution
             
@@ -1542,7 +1561,7 @@ def page_simulazione_fire():
                 st.metric("🎂 Età al FIRE", f"{fire_age + years_to_fire}+ anni")
         
         with col4:
-            total_contributed = monthly_contribution * 12 * years_to_fire
+            total_contributed = (monthly_contribution * 12 + annual_contribution_fire)* years_to_fire
             st.metric("💰 Totale Versato", format_currency(total_contributed))
         
         # Warning se non raggiunto
