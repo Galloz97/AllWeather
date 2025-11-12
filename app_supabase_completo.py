@@ -496,47 +496,54 @@ def monte_carlo_simulation(df, n_simulations=1000, days=252, monthly_contributio
         traceback.print_exc()
         return np.array([[]]), 0
 
-def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=200, annual_contribution=1000):
+def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
     tickers = df['Ticker'].tolist()
     weights = (df['Peso %'] / 100).values
     initial_value = df['Valore Totale'].sum()
-    print("DEBUG: Tickers:", tickers)
-    print("DEBUG: Pesi (percentuali):", weights)
-    print("DEBUG: Valore iniziale totale:", initial_value)
-    
+
     historical_returns = {}
+
     for ticker in tickers:
-        close_prices = get_stock_data_cached(ticker, period="5y")
-        if close_prices is not None and not close_prices.empty:
-            # Se close_prices è DataFrame, estrai la colonna prezzi chiusura come Serie
+        close_prices = get_stock_data_cached(ticker, period="2y")
+
+        # Se non valido, assegna array 1D di rendimenti fissi
+        if close_prices is None or close_prices.empty:
+            daily_returns_array = np.full(shape=252, fill_value=0.0005)
+        else:
+            # Se DataFrame, estrai "Close"
             if isinstance(close_prices, pd.DataFrame):
                 if 'Close' in close_prices.columns:
                     close_series = close_prices['Close']
                 else:
-                    # Se è DataFrame senza 'Close', prendi la prima colonna
                     close_series = close_prices.iloc[:, 0]
             elif isinstance(close_prices, pd.Series):
                 close_series = close_prices
             else:
                 close_series = None
-        
-            if close_series is not None:
+
+            if close_series is None or close_series.empty:
+                daily_returns_array = np.full(shape=252, fill_value=0.0005)
+            else:
                 daily_returns = close_series.pct_change().dropna()
                 if len(daily_returns) < 30:
-                    daily_returns_array = np.array([0.0005] * 252)
+                    daily_returns_array = np.full(shape=252, fill_value=0.0005)
                 else:
                     daily_returns_array = daily_returns.values
-            else:
-                daily_returns_array = np.array([0.0005] * 252)
-        else:
-            daily_returns_array = np.array([0.0005] * 252)
-        
+
+        # Sicurezza: applica reshape a 1D se serve
+        if not isinstance(daily_returns_array, np.ndarray):
+            daily_returns_array = np.array(daily_returns_array)
+
+        if daily_returns_array.ndim != 1:
+            daily_returns_array = daily_returns_array.flatten()
+
         historical_returns[ticker] = daily_returns_array
 
+    # Prepara versamenti pianificati
     contributions_schedule = np.zeros(days)
-    for day in range(0, days, 21):
-        contributions_schedule[day] = monthly_contribution
-    for day in range(0, days, 252):
+    for day in range(0, days, 21):  # circa mensile
+        contributions_schedule[day] += monthly_contribution
+    for day in range(0, days, 252):  # annuo
         contributions_schedule[day] += annual_contribution
 
     simulations = np.zeros((n_simulations, days))
@@ -555,6 +562,7 @@ def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=
 
     total_contributions = np.sum(contributions_schedule)
     return simulations, total_contributions
+
 
 # ==================== PAGINA MONITORAGGIO ====================
 
