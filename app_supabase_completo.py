@@ -1975,7 +1975,7 @@ def page_configurazione():
                 # Usa la sintassi corretta: update().eq().execute()
                 response = (
                     supabase.client
-                    .table("configurazioni")
+                    .table("configurazione")
                     .update({"config_value": value})
                     .eq("user_id", user_id)
                     .eq("config_key", key)
@@ -1986,7 +1986,7 @@ def page_configurazione():
                 if not response.data:
                     response = (
                         supabase.client
-                        .table("configurazioni")
+                        .table("configurazione")
                         .insert({
                             "user_id": user_id,
                             "config_key": key,
