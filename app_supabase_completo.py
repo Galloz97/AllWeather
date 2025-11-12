@@ -500,6 +500,9 @@ def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=
     tickers = df['Ticker'].tolist()
     weights = (df['Peso %'] / 100).values
     initial_value = df['Valore Totale'].sum()
+    print("DEBUG: Tickers:", tickers)
+    print("DEBUG: Pesi (percentuali):", weights)
+    print("DEBUG: Valore iniziale totale:", initial_value)
     
     historical_returns = {}
     for ticker in tickers:
