@@ -496,15 +496,17 @@ def monte_carlo_simulation(df, n_simulations=1000, days=252, monthly_contributio
         traceback.print_exc()
         return np.array([[]]), 0
 
-def bootstrap_simulation_vectorized(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
+def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=0, annual_contribution=0):
+
     tickers = df['Ticker'].tolist()
     weights = (df['Peso %'] / 100).values
     initial_value = df['Valore Totale'].sum()
 
-    # Recupera rendimenti storici e normalizza in array 1D per ticker
+    # Prepara dizionario rendimenti storici per ticker (array 1D)
     historical_returns = {}
     for ticker in tickers:
         close_prices = get_stock_data_cached(ticker, period="2y")
+
         if close_prices is None or close_prices.empty:
             daily_returns_array = np.full(252, 0.0005)
         else:
@@ -517,6 +519,7 @@ def bootstrap_simulation_vectorized(df, n_simulations=1000, days=252, monthly_co
                 close_series = close_prices
             else:
                 close_series = None
+
             if close_series is None or close_series.empty:
                 daily_returns_array = np.full(252, 0.0005)
             else:
@@ -525,10 +528,16 @@ def bootstrap_simulation_vectorized(df, n_simulations=1000, days=252, monthly_co
                     daily_returns_array = np.full(252, 0.0005)
                 else:
                     daily_returns_array = daily_returns.values
-        historical_returns[ticker] = daily_returns_array.flatten()
 
-    # Prepara matrice campionata (simulazioni, tickers, giorni)
-    # Ogni ticker campionerà n_simulations*days ritorni
+        # Assicura array 1D
+        if not isinstance(daily_returns_array, np.ndarray):
+            daily_returns_array = np.array(daily_returns_array)
+        if daily_returns_array.ndim != 1:
+            daily_returns_array = daily_returns_array.flatten()
+
+        historical_returns[ticker] = daily_returns_array
+
+    # Precampiona rendimenti per ogni ticker (n_simulations x days)
     samples_per_ticker = []
     for ticker in tickers:
         samples = np.random.choice(
@@ -538,33 +547,36 @@ def bootstrap_simulation_vectorized(df, n_simulations=1000, days=252, monthly_co
         )
         samples_per_ticker.append(samples)
 
-    # Stack e peso pesi ticker (tickers x sim x days) → (sim x days) per ogni ticker
-    # Poi somma pesi e rendimenti per avere rendimento totale giornaliero per simulazione
-    returns_array = np.array(samples_per_ticker)  # shape (n_tickers, n_sims, days)
-    weighted_returns = returns_array * weights[:, np.newaxis, np.newaxis]  # broadcast weights sui sims e giorni
-    portfolio_returns = weighted_returns.sum(axis=0)  # shape (n_sims, days)
+    # Crea array 3D (tickers, n_sims, days)
+    returns_array = np.array(samples_per_ticker)  # shape: (n_tickers, n_sims, days)
 
-    # Costruisci array versamenti giornalieri (days)
+    # Applica pesi e somma sui ticker → (n_sims, days)
+    weighted_returns = returns_array * weights[:, np.newaxis, np.newaxis]
+    portfolio_returns = weighted_returns.sum(axis=0)
+
+    # Prepara versamenti giornalieri (0 iniziali, poi riempi)
     contributions_schedule = np.zeros(days)
-    for day in range(0, days, 21):
+    for day in range(0, days, 21):  # circa mensile
         contributions_schedule[day] += monthly_contribution
-    for day in range(0, days, 252):
+    for day in range(0, days, 252):  # annuo
         contributions_schedule[day] += annual_contribution
 
-    # Array valori portafoglio (simulazioni, giorni)
+    # Array valori portafoglio simulati (n_sims, days)
     portfolio_values = np.zeros((n_simulations, days))
 
-    # Valore iniziale replicato per tutti simulations
+    # Inizializza primo giorno con valore iniziale + eventuale contributo
     portfolio_values[:, 0] = initial_value + contributions_schedule[0]
 
-    # Simula crescita cumulativa vettorializzata
+    # Calcola cumulativamente valori portafoglio su tutti i giorni, vettorializzato
     for day in range(1, days):
-        portfolio_values[:, day] = (portfolio_values[:, day - 1] * (1 + portfolio_returns[:, day])) + contributions_schedule[day]
+        portfolio_values[:, day] = (
+            portfolio_values[:, day - 1] * (1 + portfolio_returns[:, day]) +
+            contributions_schedule[day]
+        )
 
     total_contributed = np.sum(contributions_schedule)
 
     return portfolio_values, total_contributed
-
 
 # ==================== PAGINA MONITORAGGIO ====================
 
