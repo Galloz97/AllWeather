@@ -43,7 +43,7 @@ user_id = st.session_state.user.id
 # ==================== UTILITY FUNCTIONS ====================
 
 @st.cache_data(ttl=3600)
-def get_stock_data(ticker, period="5y"):
+def get_stock_data(ticker, period="10y"):
     """Recupera dati storici da yfinance"""
     try:
         data = yf.download(ticker, period=period, progress=False)
@@ -52,7 +52,7 @@ def get_stock_data(ticker, period="5y"):
         return None
 
 @st.cache_data(ttl=3600)  # Cache per 1 ora
-def get_stock_data_cached(ticker, period="5y"):
+def get_stock_data_cached(ticker, period="10y"):
     """Scarica dati storici con cache"""
     try:
         data = yf.download(ticker, period=period, progress=False, timeout=10)
@@ -505,7 +505,7 @@ def bootstrap_simulation(df, n_simulations=1000, days=252, monthly_contribution=
     # Prepara dizionario rendimenti storici per ticker (array 1D)
     historical_returns = {}
     for ticker in tickers:
-        close_prices = get_stock_data_cached(ticker, period="5y")
+        close_prices = get_stock_data_cached(ticker, period="10y")
 
         if close_prices is None or close_prices.empty:
             daily_returns_array = np.full(252, 0.0005)
