@@ -932,14 +932,14 @@ def page_storico_transazioni():
     with col3:
         trans_tipo = st.selectbox("Tipo", ["Buy", "Sell", "Dividend"], key="trans_tipo")
     with col4:
-        trans_quantita = st.number_input("Quantità", min_value=0.0, key="trans_quantita")
+        trans_quantita = st.number_input("Quantità", min_value=0.0, key="trans_quantita", format="%0.5f")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        trans_prezzo = st.number_input("Prezzo Unitario (€)", min_value=0.0, key="trans_prezzo")
+        trans_prezzo = st.number_input("Prezzo Unitario (€)", min_value=0.0, key="trans_prezzo", format="%0.5f")
     with col2:
-        trans_commissioni = st.number_input("Commissioni (€)", min_value=0.0, key="trans_comm")
+        trans_commissioni = st.number_input("Commissioni (€)", min_value=0.0, key="trans_comm", format="%0.5f")
     with col3:
         trans_note = st.text_input("Note", key="trans_note")
     
